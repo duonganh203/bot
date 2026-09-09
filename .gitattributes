@@ -1,0 +1,7 @@
+*.sh text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.py text eol=lf
+runner/*.md text eol=lf
+runner/*.json text eol=lf
+deploy/ubuntu/*.env.example text eol=lf

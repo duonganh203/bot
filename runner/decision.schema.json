@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "symbol", "amountUsd", "confidence", "riskLevel", "rationale"],
+  "properties": {
+    "action": { "type": "string", "enum": ["BUY", "SELL", "HOLD"] },
+    "symbol": { "type": ["string", "null"], "enum": ["BTCUSDT", "ETHUSDT", null] },
+    "amountUsd": { "type": ["string", "null"] },
+    "confidence": { "type": "number" },
+    "riskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+    "rationale": { "type": "string" }
+  }
+}

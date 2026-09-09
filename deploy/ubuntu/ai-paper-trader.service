@@ -1,0 +1,29 @@
+[Unit]
+Description=AI Paper Trader backend
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=paper-trader
+Group=paper-trader
+WorkingDirectory=/opt/ai-paper-trader
+EnvironmentFile=/etc/ai-paper-trader.env
+ExecStart=/usr/bin/node /opt/ai-paper-trader/dist/app/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StateDirectory=ai-paper-trader
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-paper-trader
+
+[Install]
+WantedBy=multi-user.target

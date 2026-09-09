@@ -29,6 +29,8 @@ Stop the server and retire pending scheduler requests before `db:reset`. Reset c
 
 ## Deployment
 
+For an Ubuntu 24.04 x86_64 VPS, use the **[direct IP deployment guide](docs/VPS_UBUNTU.md)** and the templates in `deploy/ubuntu/`. The backend runs under systemd at `http://IP:3000` without an API token; SQLite remains in a separate persistent directory.
+
 See the **[deployment guide](docs/DEPLOYMENT.md)** for Render setup, a self-hosted alternative, and post-deployment checks. The included [render.yaml](render.yaml) configures one Node service with a persistent disk and no API token. It is a deployment template; no cloud service has been created.
 
 Run one writer process with `dist/`, `drizzle/`, installed dependencies, and persistent storage for `DATABASE_PATH`. Start from the project root. Fastify writes JSON logs and handles SIGINT/SIGTERM shutdown. Do not run multiple workers against this SQLite database.
@@ -46,6 +48,8 @@ Run one writer process with `dist/`, `drizzle/`, installed dependencies, and per
 `API_TOKEN` is optional on every HOST. With an empty token, clients do not send an `Authorization` header. If a token is configured, API requests require `Authorization: Bearer <token>`; `/health` remains public.
 
 ## Connecting scheduled AI Trade Signal
+
+For the VPS with a ChatGPT-authenticated Codex CLI, use the included **[Codex runner](docs/CODEX_RUNNER.md)**. It fetches public market data, validates a structured decision, persists retries, and includes a systemd timer for every two hours. Start with a dry run; installing the backend alone does not activate the runner.
 
 The local `.env` and Render template use token-free access. For each scheduled run:
 
@@ -74,6 +78,7 @@ src/config/           Environment validation
 src/shared/           Decimal helpers, errors, and signal queue
 tests/                Risk, API, persistence, failure, and concurrency tests
 scripts/              Migrate, reset, review, and smoke-test commands
+runner/               Optional Linux Python/Codex signal runner and failure tests
 ```
 
 Routes contain no business logic. `buildApp()` is the composition root and supports clock, executor, and market-data injection. The repository provides a shared write boundary so portfolio, position, trade, decision, and quote updates are atomic. Domain code does not depend on Fastify, Zod, or SQLite.

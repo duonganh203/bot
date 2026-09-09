@@ -16,7 +16,7 @@ Reviewer        -> GET /api/review -> inspect decision evidence
                 -> evaluate against fixed criteria -> activate or discard
 ```
 
-The first two lines and the reviewer are external integrations. The backend implements context, signal handling, evidence storage, and the report. Candidate evaluation, activation, and rollback are a documented workflow; there is no strategy registry or shadow runner yet.
+The optional [Codex VPS runner](CODEX_RUNNER.md) implements the first two lines as a separate process. The backend implements context, signal handling, evidence storage, and the report. The reviewer, candidate evaluation, activation, and rollback remain a documented workflow; there is no strategy registry or shadow runner yet.
 
 ## Scheduled signal contract
 
@@ -99,7 +99,7 @@ Integration defects such as missing retry keys can be checked directly with fail
 
 For code changes, run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm smoke`. Keep hard limits, accounting invariants, and paper-only execution fixed. Publish a reviewable patch and evaluation evidence. Once a candidate meets the chosen criteria, change the external scheduler's pinned version; retain the previous prompt/configuration for rollback. Rolling back a strategy does not undo already recorded trades.
 
-Use [REVIEWER_PROMPT.md](REVIEWER_PROMPT.md) as the external reviewer's starting prompt. Configure the schedule in the scheduler you use; this repository creates no recurring task and makes no model API calls.
+Use [REVIEWER_PROMPT.md](REVIEWER_PROMPT.md) as the external reviewer's starting prompt. The optional VPS runner invokes Codex CLI and provides timer templates; they take effect only when installed and enabled. The backend itself creates no recurring task and makes no model API calls.
 
 ## Storage and operations
 

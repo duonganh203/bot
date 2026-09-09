@@ -1,5 +1,28 @@
 # Verification — 2026-09-09
 
+## Optional VPS runner
+
+The new `runner/` is tested with Python 3 on Ubuntu WSL. Its 20 standard-library
+tests pass, including a real local HTTP response lost after a simulated receipt
+commit, identical replay, persisted-request recovery, expired pending work, slot
+deduplication, OS locking, dry-run behavior, invalid model output, cash/fee and
+position boundaries, stale/gapped candles, changed portfolio, and subprocess
+schema/stdin/timeout handling with a fake Codex executable. These tests make no
+model calls or requests to the deployed portfolio.
+
+The unchanged backend also passed lint, typecheck, all 79 tests, build, and the
+real HTTP/process-restart smoke test after adding the runner. Systemd accepted
+the agent service/timer templates and the `00/2:05:00 UTC` calendar expression in
+Ubuntu WSL. Windows-mounted file-mode warnings do not apply to units installed
+with the documented `install -m 0644` command.
+
+The user separately verified the deployed backend, ChatGPT-authenticated Codex
+HOLD/replay, and public Binance BTC/ETH requests on the VPS. The new full runner
+has **not yet been run with real Codex on that VPS**, and its timer has not been
+enabled. Follow [docs/CODEX_RUNNER.md](docs/CODEX_RUNNER.md) for those checks.
+
+## Backend verification
+
 Verified locally on Windows, Node.js 24.14.1, pnpm 11.13.1.
 
 | Check | Result |
