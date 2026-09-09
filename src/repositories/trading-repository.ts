@@ -1,6 +1,8 @@
 import type {
-  AgentDecision, Portfolio, Position, PriceQuote, Trade, TradingSnapshot, TradingSymbol,
+  AgentDecision, ContextSnapshot, DecisionAudit, Portfolio, Position, PriceQuote,
+  SignalReceipt, Trade, TradingSnapshot, TradingSymbol,
 } from '../domain/trading/types.js';
+import type { JsonValue } from '../shared/json.js';
 
 export interface CommitTrade {
   expectedVersion: number;
@@ -9,6 +11,7 @@ export interface CommitTrade {
   trade: Trade;
   decision: AgentDecision;
   quote: PriceQuote;
+  audit: DecisionAudit;
 }
 export interface HistoryFilter {
   limit: number;
@@ -18,8 +21,12 @@ export interface HistoryFilter {
 // A single repository boundary keeps portfolio/trade/audit writes atomic.
 export interface TradingRepository {
   snapshot(now: Date): TradingSnapshot;
-  saveDecision(decision: AgentDecision): void;
+  saveDecision(decision: AgentDecision, audit: DecisionAudit): void;
   commitTrade(commit: CommitTrade): void;
+  saveContext(context: ContextSnapshot): void;
+  getContext(id: string): ContextSnapshot | undefined;
+  getReceipt(key: string): SignalReceipt | undefined;
+  getDecision(id: string): DecisionRecord | undefined;
   listTrades(filter: HistoryFilter): Trade[];
   listDecisions(limit: number): DecisionRecord[];
 }
@@ -34,6 +41,10 @@ export interface DecisionRecord {
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   rationale: string;
   source: string;
+  strategyId: string;
+  strategyVersion: string;
+  contextId: string | null;
+  executionContext: JsonValue;
   status: 'HOLD' | 'EXECUTED' | 'REJECTED';
   tradeId: string | null;
   rejectionCode: string | null;

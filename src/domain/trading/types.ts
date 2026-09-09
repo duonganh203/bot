@@ -1,4 +1,5 @@
 import type { Amount } from '../../shared/decimal.js';
+import type { JsonValue } from '../../shared/json.js';
 
 export const SYMBOLS = ['BTCUSDT', 'ETHUSDT'] as const;
 export type TradingSymbol = (typeof SYMBOLS)[number];
@@ -13,6 +14,9 @@ interface SignalMetadata {
   riskLevel: RiskLevel;
   rationale: string;
   source: string;
+  strategyId?: string | undefined;
+  strategyVersion?: string | undefined;
+  contextId?: string | undefined;
 }
 export interface OrderSignal extends SignalMetadata {
   action: Side;
@@ -81,6 +85,34 @@ export interface PriceQuote {
   price: Amount;
   asOf: string;
   source: string;
+}
+
+export interface ContextSnapshot {
+  id: string;
+  createdAt: string;
+  portfolioVersion: number;
+  payload: JsonValue;
+}
+
+export interface SignalResult {
+  status: 'executed' | 'held' | 'rejected';
+  decisionId: string;
+  trade?: JsonValue;
+  portfolio?: JsonValue;
+  risk?: { code: RiskCode; reason: string };
+}
+
+export interface SignalReceipt {
+  key: string;
+  requestHash: string;
+  decisionId: string;
+  result: SignalResult;
+  createdAt: string;
+}
+
+export interface DecisionAudit {
+  executionContext: JsonValue;
+  receipt?: SignalReceipt | undefined;
 }
 export type PriceBook = Partial<Record<TradingSymbol, PriceQuote>>;
 export interface TradingSnapshot {

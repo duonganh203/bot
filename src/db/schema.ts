@@ -3,6 +3,8 @@ import { check, customType, index, integer, real, sqliteTable, text } from 'driz
 import type { Amount } from '../shared/decimal.js';
 import { decimal } from '../shared/decimal.js';
 import { SYMBOLS } from '../domain/trading/types.js';
+import type { SignalResult } from '../domain/trading/types.js';
+import type { JsonValue } from '../shared/json.js';
 
 const amount = customType<{ data: Amount; driverData: string }>({
   dataType: () => 'text',
@@ -62,6 +64,13 @@ export const trades = sqliteTable('trades', {
   check('trade_order_limit', sql`CAST(${table.grossUsd} AS REAL) > 0 AND CAST(${table.grossUsd} AS REAL) <= 5`),
 ]);
 
+export const contextSnapshots = sqliteTable('context_snapshots', {
+  id: text('id').primaryKey(),
+  portfolioVersion: integer('portfolio_version').notNull(),
+  payload: text('payload', { mode: 'json' }).$type<JsonValue>().notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [index('context_snapshots_created_at_idx').on(table.createdAt)]);
+
 export const agentDecisions = sqliteTable('agent_decisions', {
   sequence: integer('sequence').primaryKey({ autoIncrement: true }),
   id: text('id').notNull().unique(),
@@ -73,12 +82,18 @@ export const agentDecisions = sqliteTable('agent_decisions', {
   riskLevel: text('risk_level', { enum: ['LOW', 'MEDIUM', 'HIGH'] }).notNull(),
   rationale: text('rationale').notNull(),
   source: text('source').notNull(),
+  strategyId: text('strategy_id').notNull().default('default'),
+  strategyVersion: text('strategy_version').notNull().default('unversioned'),
+  contextId: text('context_id').references(() => contextSnapshots.id),
+  executionContext: text('execution_context', { mode: 'json' }).$type<JsonValue>(),
   status: text('status', { enum: ['HOLD', 'EXECUTED', 'REJECTED'] }).notNull(),
   tradeId: text('trade_id').references(() => trades.id).unique(),
   rejectionCode: text('rejection_code'),
   rejectionReason: text('rejection_reason'),
   createdAt: text('created_at').notNull(),
 }, (table) => [
+  index('decisions_strategy_created_at_idx').on(table.strategyId, table.strategyVersion, table.createdAt),
+  index('decisions_created_at_idx').on(table.createdAt),
   check('decision_action', sql`${table.action} IN ('BUY', 'SELL', 'HOLD')`),
   check('decision_confidence', sql`${table.confidence} BETWEEN 0 AND 1`),
   check('decision_consistency', sql`
@@ -87,6 +102,14 @@ export const agentDecisions = sqliteTable('agent_decisions', {
     OR (${table.status} = 'REJECTED' AND ${table.action} IN ('BUY', 'SELL') AND ${table.tradeId} IS NULL AND ${table.rejectionCode} IS NOT NULL AND ${table.rejectionReason} IS NOT NULL)
   `),
 ]);
+
+export const signalReceipts = sqliteTable('signal_receipts', {
+  key: text('key').primaryKey(),
+  requestHash: text('request_hash').notNull(),
+  decisionId: text('decision_id').notNull().unique().references(() => agentDecisions.id),
+  result: text('result', { mode: 'json' }).$type<SignalResult>().notNull(),
+  createdAt: text('created_at').notNull(),
+});
 
 export const marketPrices = sqliteTable('market_prices', {
   symbol: text('symbol', { enum: SYMBOLS }).primaryKey(),

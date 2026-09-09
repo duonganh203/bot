@@ -64,11 +64,11 @@ async function startServer() {
   throw new Error(`Server readiness timed out: ${logs}`);
 }
 
-async function request(baseUrl: string, path: string, payload?: unknown, expectedStatus = 200): Promise<unknown> {
+async function request(baseUrl: string, path: string, payload?: unknown, expectedStatus = 200, key?: string): Promise<unknown> {
   const method = payload === undefined ? 'GET' : 'POST';
   const response = await fetch(`${baseUrl}${path}`, {
     method, signal: AbortSignal.timeout(5000),
-    ...(payload === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
+    ...(payload === undefined ? {} : { headers: { 'content-type': 'application/json', ...(key ? { 'idempotency-key': key } : {}) }, body: JSON.stringify(payload) }),
   });
   const body: unknown = await response.json();
   exchanges.push({ method, path, status: response.status, body });
@@ -77,20 +77,32 @@ async function request(baseUrl: string, path: string, payload?: unknown, expecte
 }
 
 const signal = { action: 'BUY', symbol: 'BTCUSDT', amountUsd: 5, price: 100000,
-  confidence: 0.74, riskLevel: 'LOW', rationale: 'HTTP smoke test', source: 'smoke' };
+  confidence: 0.74, riskLevel: 'LOW', rationale: 'HTTP smoke test', source: 'smoke', strategyId: 'smoke', strategyVersion: 'v1' };
+let originalBuy: unknown;
+let contextId: string;
 
 try {
   const server = await startServer();
   try {
     assert.deepEqual(await request(server.baseUrl, '/health'), { status: 'ok' });
     checks.push('GET /health');
-    assert.equal(contextSchema.parse(await request(server.baseUrl, '/api/context')).portfolio.cash, 50);
+    const initial = await request(server.baseUrl, '/api/context');
+    assert.equal(contextSchema.parse(initial).portfolio.cash, 50);
+    contextId = z.object({ contextId: z.uuid() }).parse(initial).contextId;
+    assert.deepEqual(await request(server.baseUrl, `/api/contexts/${contextId}`), initial);
     checks.push('GET /api/context: initial $50');
 
-    const buy = executionSchema.parse(await request(server.baseUrl, '/api/signals', signal));
+    originalBuy = await request(server.baseUrl, '/api/signals', { ...signal, contextId }, 200, 'smoke-buy');
+    const buy = executionSchema.parse(originalBuy);
     assert.equal(buy.portfolio.cash, 44.995);
     assert.equal(buy.trade.feeUsd, 0.005);
     checks.push('BUY: cash 44.995, fee 0.005');
+    const decisionId = z.object({ decisionId: z.uuid() }).parse(originalBuy).decisionId;
+    const detail = z.object({ agentContext: z.unknown(), decision: z.object({ strategyVersion: z.string() }) })
+      .parse(await request(server.baseUrl, `/api/decisions/${decisionId}`));
+    assert.deepEqual(detail.agentContext, initial);
+    assert.equal(detail.decision.strategyVersion, 'v1');
+    checks.push('Decision links exact context and strategy version');
 
     const beforeHold = await request(server.baseUrl, '/api/context');
     assert.equal(z.object({ status: z.literal('held') }).parse(await request(server.baseUrl, '/api/signals', { ...signal, action: 'HOLD' })).status, 'held');
@@ -118,6 +130,12 @@ try {
     assert.equal(context.portfolio.cash, 46.993);
     assert.equal(context.positions[0]?.quantity, 0.00004);
     checks.push('Production process restart preserves state');
+    assert.deepEqual(await request(restarted.baseUrl, '/api/signals', { ...signal, contextId }, 200, 'smoke-buy'), originalBuy);
+    await request(restarted.baseUrl, '/api/signals', { ...signal, contextId, amountUsd: 4 }, 409, 'smoke-buy');
+    const review = z.object({ summary: z.object({ decisions: z.number(), realizedPnlUsd: z.string(), feesPaidUsd: z.string() }) })
+      .parse(await request(restarted.baseUrl, '/api/review?days=7&strategyId=smoke&strategyVersion=v1'));
+    assert.deepEqual(review.summary, { decisions: 4, realizedPnlUsd: '0.997', feesPaidUsd: '0.007' });
+    checks.push('Durable retry returns original response; changed payload conflicts; review reports 4 decisions');
   } finally { await restarted.stop(); }
 
   const sqlite = new Database(databasePath, { readonly: true });
@@ -131,6 +149,9 @@ try {
     assert.deepEqual(portfolio, { cash: '46.993', realized_pnl: '0.997', total_fees: '0.007' });
     const positions: unknown = sqlite.prepare('SELECT symbol, quantity, average_entry_price FROM positions').all();
     assert.deepEqual(positions, [{ symbol: 'BTCUSDT', quantity: '0.00004', average_entry_price: '100000' }]);
+    assert.deepEqual(sqlite.prepare('SELECT COUNT(*) AS count FROM trades').get(), { count: 2 });
+    assert.deepEqual(sqlite.prepare('SELECT COUNT(*) AS count FROM signal_receipts').get(), { count: 1 });
+    assert.deepEqual(sqlite.prepare('SELECT COUNT(*) AS count FROM agent_decisions WHERE execution_context IS NOT NULL').get(), { count: 4 });
     state = { integrity, foreignKeys, portfolio, positions,
       trades: sqlite.prepare('SELECT side, gross_usd, fee_usd, realized_pnl FROM trades ORDER BY sequence').all(),
       decisions: sqlite.prepare('SELECT action, status, rejection_code FROM agent_decisions ORDER BY sequence').all(),

@@ -1,17 +1,21 @@
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import type { DatabaseConnection } from '../../db/client.js';
-import { agentDecisions, marketPrices, portfolios, positions, trades } from '../../db/schema.js';
-import type { AgentDecision, PriceBook, TradingSnapshot } from '../../domain/trading/types.js';
+import { agentDecisions, contextSnapshots, marketPrices, portfolios, positions, signalReceipts, trades } from '../../db/schema.js';
+import type { AgentDecision, ContextSnapshot, DecisionAudit, PriceBook, TradingSnapshot } from '../../domain/trading/types.js';
 import { utcDayRange } from '../../risk/daily-risk.js';
 import { ConcurrentUpdateError } from '../../shared/errors.js';
 import type { CommitTrade, HistoryFilter, TradingRepository } from '../trading-repository.js';
 
-function decisionRow(decision: AgentDecision) {
+function decisionRow(decision: AgentDecision, audit: DecisionAudit) {
   return {
     ...decision.signal,
     symbol: decision.signal.symbol ?? null,
     amountUsd: decision.signal.amountUsd ?? null,
     price: decision.signal.price ?? null,
+    strategyId: decision.signal.strategyId ?? 'default',
+    strategyVersion: decision.signal.strategyVersion ?? 'unversioned',
+    contextId: decision.signal.contextId ?? null,
+    executionContext: audit.executionContext,
     id: decision.id, status: decision.status, tradeId: decision.tradeId,
     rejectionCode: decision.rejectionCode, rejectionReason: decision.rejectionReason,
     createdAt: decision.createdAt,
@@ -39,8 +43,27 @@ export class SqliteTradingRepository implements TradingRepository {
     });
   }
 
-  saveDecision(decision: AgentDecision): void {
-    this.connection.db.insert(agentDecisions).values(decisionRow(decision)).run();
+  saveContext(context: ContextSnapshot): void {
+    this.connection.db.insert(contextSnapshots).values(context).run();
+  }
+
+  getContext(id: string) {
+    return this.connection.db.select().from(contextSnapshots).where(eq(contextSnapshots.id, id)).get();
+  }
+
+  getReceipt(key: string) {
+    return this.connection.db.select().from(signalReceipts).where(eq(signalReceipts.key, key)).get();
+  }
+
+  getDecision(id: string) {
+    return this.connection.db.select().from(agentDecisions).where(eq(agentDecisions.id, id)).get();
+  }
+
+  saveDecision(decision: AgentDecision, audit: DecisionAudit): void {
+    this.connection.db.transaction((tx) => {
+      tx.insert(agentDecisions).values(decisionRow(decision, audit)).run();
+      if (audit.receipt) tx.insert(signalReceipts).values(audit.receipt).run();
+    }, { behavior: 'immediate' });
   }
 
   commitTrade(commit: CommitTrade): void {
@@ -55,7 +78,8 @@ export class SqliteTradingRepository implements TradingRepository {
           .onConflictDoUpdate({ target: positions.symbol, set: commit.position }).run();
       }
       tx.insert(trades).values(commit.trade).run();
-      tx.insert(agentDecisions).values(decisionRow(commit.decision)).run();
+      tx.insert(agentDecisions).values(decisionRow(commit.decision, commit.audit)).run();
+      if (commit.audit.receipt) tx.insert(signalReceipts).values(commit.audit.receipt).run();
       tx.insert(marketPrices).values({ symbol: commit.trade.symbol, ...commit.quote })
         .onConflictDoUpdate({ target: marketPrices.symbol, set: commit.quote }).run();
     }, { behavior: 'immediate' });

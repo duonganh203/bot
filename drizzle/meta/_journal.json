@@ -8,6 +8,13 @@
       "when": 1788955738036,
       "tag": "0000_whole_mindworm",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788961543564,
+      "tag": "0001_lazy_sue_storm",
+      "breakpoints": true
     }
   ]
 }

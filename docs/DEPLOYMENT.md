@@ -94,12 +94,12 @@ Configure the external scheduled AI Trade Signal job with:
 Base URL: https://your-service.onrender.com
 Context:  GET /api/context?BTCUSDT=<current-price>&ETHUSDT=<current-price>
 Signal:   POST /api/signals
-Headers:  Content-Type: application/json
+Headers:  Content-Type: application/json, Idempotency-Key: <saved-decision-key>
 Auth:     None
 Source:   scheduled-ai-trade-signal
 ```
 
-Use prices supplied by your market-data source, not the illustrative prices in the README. Query prices affect that context response only; BUY/SELL must include their own `price`. Handle HTTP 422 as a recorded risk rejection. Inspect history before retrying uncertain POST outcomes because idempotency is not implemented.
+Use prices supplied by your market-data source, not the illustrative prices in the README. Query prices affect that context valuation only; BUY/SELL must include their own `price`. Include the returned `contextId` and paired `strategyId` / `strategyVersion`. Persist the payload and key before submission, then retry uncertain POST outcomes using that same saved payload/key. Handle HTTP 422 as a recorded risk rejection and 409 `IDEMPOTENCY_CONFLICT` as a scheduler inconsistency. See [the self-review guide](SELF_REVIEW.md) for evidence retrieval and the separate review workflow.
 
 The backend does not run the scheduler or contact ChatGPT itself. It must be reachable from the scheduler's runtime. With authentication disabled, other clients that can reach the URL can also submit paper decisions.
 

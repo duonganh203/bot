@@ -20,11 +20,12 @@ pnpm test
 pnpm smoke       # Build, real HTTP, process restart, and direct SQLite verification
 pnpm db:migrate  # Apply migrations without starting HTTP
 pnpm db:reset    # Clear paper history and restore cash to $50
+pnpm review      # Save an evidence-based review report; default lookback is 7 days
 pnpm build
 pnpm start       # Run the compiled server
 ```
 
-Stop the server before `db:reset`. Reset clears positions, trades, decisions, and quotes in the configured database; it does not remove files or directories. Normal startup never resets the portfolio.
+Stop the server and retire pending scheduler requests before `db:reset`. Reset clears positions, trades, decisions, quotes, context snapshots, and idempotency receipts in the configured database; it does not remove files or directories. Normal startup never resets the portfolio.
 
 ## Deployment
 
@@ -49,9 +50,11 @@ Run one writer process with `dist/`, `drizzle/`, installed dependencies, and per
 The local `.env` and Render template use token-free access. For each scheduled run:
 
 1. Obtain market prices and call `GET /api/context?BTCUSDT=<btc-price>&ETHUSDT=<eth-price>` for portfolio state and risk budget.
-2. Produce one BUY, SELL, or HOLD decision. BUY/SELL must include the decision's execution price in `price`.
-3. Send JSON to `POST /api/signals` with `Content-Type: application/json`. Use `source: "scheduled-ai-trade-signal"` for audit attribution.
-4. Inspect `status` and, when rejected, `risk.code`. HTTP 422 is an audited risk outcome, not an error to retry automatically. After an ambiguous timeout, inspect trades/decisions before resubmitting: the MVP does not have idempotency keys.
+2. Produce one BUY, SELL, or HOLD decision. BUY/SELL must include the decision's execution price in `price`. Include the returned `contextId` and a paired `strategyId` / `strategyVersion`.
+3. Persist that payload and a unique `Idempotency-Key` in the scheduler before sending JSON to `POST /api/signals`. Send the key as a header alongside `Content-Type: application/json`. Use `source: "scheduled-ai-trade-signal"` for audit attribution.
+4. Inspect `status` and, when rejected, `risk.code`. HTTP 422 is an audited risk outcome. Retry an ambiguous timeout using the exact saved payload and key; the backend returns the original result without a second fill. Different payloads using the same key return 409 `IDEMPOTENCY_CONFLICT`.
+
+See [the self-review guide](docs/SELF_REVIEW.md) for the full retry contract, audit endpoints, review report, and candidate evaluation workflow. Metadata and keys are optional for existing clients; omitted keys provide no deduplication. This release provides review evidence and suggestions, not automatic strategy activation.
 
 A job on the same machine can use `http://127.0.0.1:3000`. A remote job needs the backend's reachable address, such as its deployed HTTPS URL; the job's localhost refers to its own machine. Without a token, any client that can reach the backend can submit paper signals. Schedule creation and actual job connection are configured in the external scheduler.
 
@@ -59,7 +62,8 @@ A job on the same machine can use `http://127.0.0.1:3000`. A remote job needs th
 
 ```text
 src/app/routes/       Zod validation -> service -> HTTP/JSON
-src/services/         Trading, context, and history orchestration
+src/services/         Trading, context, history, and review orchestration
+src/review/           Shared HTTP/CLI review options
 src/domain/trading/   Entities, cost basis, PnL, and pure valuation
 src/risk/             Hard limits, risk engine, and UTC daily-risk computation
 src/execution/        TradeExecutor interface and PaperTradeExecutor
@@ -69,7 +73,7 @@ src/db/               Drizzle schema, connection, migrations, and bootstrap
 src/config/           Environment validation
 src/shared/           Decimal helpers, errors, and signal queue
 tests/                Risk, API, persistence, failure, and concurrency tests
-scripts/              Migrate, reset, and smoke-test commands
+scripts/              Migrate, reset, review, and smoke-test commands
 ```
 
 Routes contain no business logic. `buildApp()` is the composition root and supports clock, executor, and market-data injection. The repository provides a shared write boundary so portfolio, position, trade, decision, and quote updates are atomic. Domain code does not depend on Fastify, Zod, or SQLite.
@@ -101,16 +105,19 @@ curl 'http://127.0.0.1:3000/api/decisions?limit=20'
 | Endpoint or outcome | Response |
 | --- | --- |
 | `GET /health` | `200 {"status":"ok"}` |
-| `GET /api/context` | Portfolio, positions, net PnL, UTC risk budget, quote source/asOf, and 20 recent trades |
+| `GET /api/context` | A new persisted `contextId`, portfolio, positions, net PnL, UTC risk budget, quote source/asOf, and 20 recent trades |
 | `POST /api/signals` BUY/SELL | `200 {status:"executed", decisionId, trade, portfolio}` |
 | `POST /api/signals` HOLD | `200 {status:"held", decisionId}`; records a decision only |
 | Risk rejection | `422 {status:"rejected", decisionId, risk:{code,reason}}`; records a rejected decision |
 | `GET /api/trades` | `{trades:[...]}`, newest first; optional `symbol`, `limit` defaults to 50 and is capped at 200 |
 | `GET /api/decisions` | `{decisions:[...]}`, newest first; `limit` defaults to 50 and is capped at 200 |
+| `GET /api/decisions/:id` | `{decision, agentContext}` with execution evidence and the linked original context |
+| `GET /api/contexts/:id` | The exact previously stored context response |
+| `GET /api/review` | Read-only diagnostics, evidence IDs, and per-strategy summaries; `days=1..90`, default 7; optional strategy filters |
 
 Invalid input returns 400; missing/invalid authentication when enabled returns 401; a stale concurrent commit returns 409; internal failures return 500 without exposing implementation details. Malformed inputs are not agent decisions. Infrastructure failures are logged; risk rejections are audited. Strict schemas reject unknown fields, including leverage or policy overrides. Unsupported BUY/SELL symbols produce an audited `INVALID_SYMBOL` rejection.
 
-Metadata: `confidence` is in [0,1], `riskLevel` is LOW/MEDIUM/HIGH, `rationale` is 1-2000 characters, and `source` is 1-100 characters. Metadata cannot change hard rules. HOLD does not require symbol, amount, or price; supplied fields are still validated.
+Metadata: `confidence` is in [0,1], `riskLevel` is LOW/MEDIUM/HIGH, `rationale` is 1-2000 characters, and `source` is 1-100 characters. Optional `strategyId` and `strategyVersion` must be supplied together; omission is recorded as `default` / `unversioned`. Optional `contextId` must identify a stored context, otherwise the request returns 404. Metadata cannot change hard rules. HOLD does not require symbol, amount, or price; supplied fields are still validated.
 
 ## Hard risk rules
 
@@ -125,7 +132,7 @@ Limits are backend constants in `src/risk/limits.ts`, not environment or signal 
 
 ## Prices and accounting
 
-The MVP uses manual prices and makes no exchange calls. A signal's price determines its paper fill and marks that symbol during risk checks. Other symbols use their last successful fill price stored in SQLite. HOLD and rejected signals do not update quotes. Context query prices are temporary marks: **they do not change the database or subsequent requests**. Quotes include source/asOf; there is no freshness gate yet.
+The MVP uses manual prices and makes no exchange calls. A signal's price determines its paper fill and marks that symbol during risk checks. Other symbols use their last successful fill price stored in SQLite. HOLD and rejected signals do not update quotes. Context query prices are temporary valuation marks: **they do not update portfolio state, stored market prices, or subsequent valuations**. The response itself is saved as audit evidence under its `contextId`. Quotes include source/asOf; there is no freshness gate yet.
 
 `MarketDataProvider.getPrice()` returns `Promise<Amount>` (Decimal). An injected provider supplies context valuation and marks for existing holdings; context query overrides apply only to the manual adapter. Paper fills still use the signal price. Freshness and price validation should be designed before using a live market feed.
 
@@ -144,24 +151,26 @@ Immediately after a BUY at an unchanged price, unrealized PnL is -0.005 and real
 
 ## Database and consistency
 
-The default database is `data/paper-trader.sqlite`. There are five tables: singleton `portfolio` (id=1), `positions` (symbol primary key), `trades`, `agent_decisions`, and `market_prices`. Executed decisions reference their trades. A sequence orders history even when timestamps match. Timestamps are ISO UTC.
+The default database is `data/paper-trader.sqlite`. There are seven application tables: singleton `portfolio` (id=1), `positions` (symbol primary key), `trades`, `agent_decisions`, `market_prices`, `context_snapshots`, and `signal_receipts`. Executed decisions reference their trades; contexts and receipts link audit evidence. A sequence orders history even when timestamps match. Timestamps are ISO UTC.
 
 Drizzle SQL migrations live in `drizzle/`; startup and `db:migrate` apply only pending migrations. After schema changes, run `pnpm db:generate`, review the generated SQL, and migrate. WAL, foreign keys, busy timeout, and synchronous FULL are enabled.
 
 One process serializes signals. The paper executor has no side effects; after risk approval, accounting and audit changes commit in a **BEGIN IMMEDIATE transaction**. Portfolio version checks prevent stale overwrites. Failed writes roll back. Context uses a consistent snapshot and cannot observe partially written state. Do not run clustered workers against the same file.
 
-There are no idempotency keys: resubmitting a valid signal can create another trade. Inspect decisions/trades before retrying an ambiguous network failure. A live executor is not a drop-in production upgrade: it requires order lifecycle, idempotency, reconciliation, and partial-fill handling.
+With an `Idempotency-Key`, receipts commit atomically with accounting and audit writes. Replays return the original response and status with `Idempotency-Replayed: true`; a different effective payload returns 409. Keys do not expire automatically. Without a key, resubmitting a valid signal can create another trade. A live executor is not a drop-in production upgrade: it requires external order lifecycle, reconciliation, and partial-fill handling.
+
+Migration `0001` preserves existing trades and balances. Older decisions retain null execution/context evidence. Audit snapshots and receipts grow over time; there is no automatic pruning. Use `/health` for frequent uptime checks and monitor disk usage on a small VPS.
 
 ## Testing and verification
 
-Vitest covers BUY, weighted average entry, profitable/losing SELL, full liquidation, fees, HOLD, every risk code, decimal strings, UTC rollover, validation, history, 30 concurrent requests, restart, database constraints, audit-write rollback, executor failure, version conflicts, reset, and auth/provider injection.
+Vitest covers BUY, weighted average entry, profitable/losing SELL, full liquidation, fees, HOLD, every risk code, decimal strings, UTC rollover, validation, history, concurrent requests, restart, database constraints, audit/receipt rollback, executor failure, version conflicts, reset, auth/provider injection, durable retries, old-schema migration, context evidence, and read-only bounded review reports.
 
 `pnpm smoke` creates a separate `data/smoke-*/paper.sqlite`, starts the **compiled server in another process**, sends real HTTP requests, restarts it, and reads SQLite directly. Expected final state: cash **46.993**, quantity **0.00004**, realized PnL **0.997**, fees **0.007**, and **2 trades / 4 decisions**, with valid integrity and foreign keys. The latest report is `data/latest-smoke.json`; each run retains its report and server log. Smoke tests do not change the development portfolio. See [VERIFICATION.md](VERIFICATION.md) for recorded local results.
 
 ## Roadmap (not implemented)
 
-1. Idempotency keys and price freshness, then Binance/Bybit market-data adapters.
-2. ChatGPT integration, scheduled agents, and strategy/version metadata.
+1. Price freshness enforcement, then Binance/Bybit market-data adapters.
+2. External scheduled agent connection, strategy registry, and isolated candidate evaluation/activation.
 3. PnL dashboard, AI versus BTC buy-and-hold benchmark, and WebSocket prices.
 4. Multiple portfolios when needed.
 5. Live execution as a separate phase after order lifecycle and reconciliation design.

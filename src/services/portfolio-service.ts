@@ -5,6 +5,8 @@ import type { MarketDataProvider } from '../market/market-data-provider.js';
 import type { TradingRepository } from '../repositories/trading-repository.js';
 import { DailyRiskService } from '../risk/daily-risk.js';
 import { LIMITS } from '../risk/limits.js';
+import { randomUUID } from 'node:crypto';
+import { toJson } from '../shared/json.js';
 
 export class PortfolioService {
   constructor(
@@ -20,7 +22,8 @@ export class PortfolioService {
     const quotes = { ...snapshot.prices, ...overrides };
     const marks = await loadMarks(snapshot.positions, this.marketData ?? new ManualMarketDataProvider(quotes));
     const daily = this.dailyRisk.compute(snapshot.tradesToday, now);
-    return {
+    const context = {
+      contextId: randomUUID(),
       asOf: now.toISOString(),
       portfolio: valuePortfolio(snapshot.portfolio, snapshot.positions, marks),
       positions: markedPositions(snapshot.positions, marks),
@@ -35,5 +38,11 @@ export class PortfolioService {
       marketData: { mode: this.marketData ? 'provider' : 'manual', quotes },
       recentTrades: snapshot.recentTrades,
     };
+    // Persist exactly the response the caller receives, including temporary query marks.
+    this.repository.saveContext({
+      id: context.contextId, createdAt: context.asOf,
+      portfolioVersion: snapshot.portfolio.version, payload: toJson(context),
+    });
+    return context;
   }
 }

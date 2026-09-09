@@ -34,12 +34,14 @@ export interface TradeResponse {
   realizedPnl: number;
 }
 export interface ContextResponse {
+  contextId: string;
   portfolio: PortfolioResponse;
   positions: { symbol: string; quantity: number; averageEntryPrice: number; currentPrice: number; marketValue: number; unrealizedPnl: number }[];
   risk: { remainingDailyLossBudgetUsd: number; dailyLossLimitReached: boolean; realizedPnlToday: number };
   recentTrades: TradeResponse[];
 }
 export interface SignalResponse {
+  decisionId: string;
   status: string;
   trade: TradeResponse;
   portfolio: PortfolioResponse;

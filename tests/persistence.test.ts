@@ -27,7 +27,10 @@ describe('SQLite durability and atomicity', () => {
     } finally { await first.close(); }
     const second = makeApp({ databasePath });
     try {
-      expect((await second.inject('/api/context')).json<ContextResponse>()).toEqual(previous);
+      const current = (await second.inject('/api/context')).json<ContextResponse>();
+      expect(current).toEqual({ ...previous, contextId: current.contextId });
+      expect(current.contextId).not.toBe(previous.contextId);
+      expect((await second.inject(`/api/contexts/${previous.contextId}`)).json<unknown>()).toEqual(previous);
       expect((await second.inject('/api/decisions')).json<DecisionsResponse>().decisions).toHaveLength(1);
     } finally { await second.close(); }
     const db = new Database(databasePath, { readonly: true });
@@ -35,7 +38,7 @@ describe('SQLite durability and atomicity', () => {
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(db.prepare('SELECT cash, typeof(cash) AS storage FROM portfolio').get()).toEqual({ cash: '44.995', storage: 'text' });
       expect(db.prepare('SELECT quantity FROM positions').get()).toEqual({ quantity: '0.00005' });
-      expect(db.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 1 });
+      expect(db.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 2 });
       expect(db.pragma('foreign_key_check')).toEqual([]);
     } finally { db.close(); }
   });

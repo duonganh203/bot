@@ -67,7 +67,8 @@ describe('paper trading through API and SQLite', () => {
     const before = await context();
     const response = await submit({ action: 'HOLD', price: 1 });
     expect(response.json<SignalResponse>().status).toBe('held');
-    expect(await context()).toEqual(before);
+    const after = await context();
+    expect(after).toEqual({ ...before, contextId: after.contextId });
     const decisions = (await app.inject('/api/decisions')).json<DecisionsResponse>().decisions;
     expect(decisions[0]).toMatchObject({ action: 'HOLD', status: 'HOLD', tradeId: null });
     const minimal = await app.inject({ method: 'POST', url: '/api/signals', payload: { action: 'HOLD', ...metadata } });
@@ -116,7 +117,8 @@ describe('paper trading through API and SQLite', () => {
     expect(marked.portfolio.positionsValue).toBe(11.5);
     expect(marked.portfolio.equity).toBe(51.49);
     expect(marked.portfolio.equity - 50).toBeCloseTo(marked.portfolio.realizedPnl + marked.portfolio.unrealizedPnl, 12);
-    expect(await context()).toEqual(before);
+    const after = await context();
+    expect(after).toEqual({ ...before, contextId: after.contextId });
   });
 
   it('trade and decision history is newest first, including identical timestamps', async () => {

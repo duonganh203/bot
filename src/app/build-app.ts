@@ -9,6 +9,8 @@ import { SqliteTradingRepository } from '../repositories/sqlite/trading-reposito
 import { PortfolioService } from '../services/portfolio-service.js';
 import { TradingService } from '../services/trading-service.js';
 import { HistoryService } from '../services/history-service.js';
+import { ReviewService } from '../services/review-service.js';
+import { SqliteReviewRepository } from '../repositories/sqlite/review-repository.js';
 import { AppError } from '../shared/errors.js';
 import { registerRoutes } from './routes/trading.js';
 
@@ -58,7 +60,8 @@ export function buildApp(options: AppOptions) {
     request.log.error({ err: error }, 'Request failed');
     return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } });
   });
-  registerRoutes(app, { portfolio, trading, history: new HistoryService(repository), clock });
+  registerRoutes(app, { portfolio, trading, history: new HistoryService(repository),
+    review: new ReviewService(new SqliteReviewRepository(connection), clock), clock });
   app.addHook('onClose', () => { connection.close(); });
   return app;
 }
