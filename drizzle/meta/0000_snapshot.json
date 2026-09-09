@@ -1,0 +1,509 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "60640ffc-d6f5-4e7c-ae7c-2030874d8a6e",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "agent_decisions": {
+      "name": "agent_decisions",
+      "columns": {
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "amount_usd": {
+          "name": "amount_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "price": {
+          "name": "price",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "risk_level": {
+          "name": "risk_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rationale": {
+          "name": "rationale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trade_id": {
+          "name": "trade_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rejection_code": {
+          "name": "rejection_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rejection_reason": {
+          "name": "rejection_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "agent_decisions_id_unique": {
+          "name": "agent_decisions_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "agent_decisions_trade_id_unique": {
+          "name": "agent_decisions_trade_id_unique",
+          "columns": [
+            "trade_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "agent_decisions_trade_id_trades_id_fk": {
+          "name": "agent_decisions_trade_id_trades_id_fk",
+          "tableFrom": "agent_decisions",
+          "tableTo": "trades",
+          "columnsFrom": [
+            "trade_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "decision_action": {
+          "name": "decision_action",
+          "value": "\"agent_decisions\".\"action\" IN ('BUY', 'SELL', 'HOLD')"
+        },
+        "decision_confidence": {
+          "name": "decision_confidence",
+          "value": "\"agent_decisions\".\"confidence\" BETWEEN 0 AND 1"
+        },
+        "decision_consistency": {
+          "name": "decision_consistency",
+          "value": "\n    (\"agent_decisions\".\"status\" = 'HOLD' AND \"agent_decisions\".\"action\" = 'HOLD' AND \"agent_decisions\".\"trade_id\" IS NULL AND \"agent_decisions\".\"rejection_code\" IS NULL)\n    OR (\"agent_decisions\".\"status\" = 'EXECUTED' AND \"agent_decisions\".\"action\" IN ('BUY', 'SELL') AND \"agent_decisions\".\"trade_id\" IS NOT NULL AND \"agent_decisions\".\"rejection_code\" IS NULL)\n    OR (\"agent_decisions\".\"status\" = 'REJECTED' AND \"agent_decisions\".\"action\" IN ('BUY', 'SELL') AND \"agent_decisions\".\"trade_id\" IS NULL AND \"agent_decisions\".\"rejection_code\" IS NOT NULL AND \"agent_decisions\".\"rejection_reason\" IS NOT NULL)\n  "
+        }
+      }
+    },
+    "market_prices": {
+      "name": "market_prices",
+      "columns": {
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "price": {
+          "name": "price",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "as_of": {
+          "name": "as_of",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "market_symbol": {
+          "name": "market_symbol",
+          "value": "\"market_prices\".\"symbol\" IN ('BTCUSDT', 'ETHUSDT')"
+        },
+        "market_positive_price": {
+          "name": "market_positive_price",
+          "value": "CAST(\"market_prices\".\"price\" AS REAL) > 0"
+        }
+      }
+    },
+    "portfolio": {
+      "name": "portfolio",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "initial_capital": {
+          "name": "initial_capital",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cash": {
+          "name": "cash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "realized_pnl": {
+          "name": "realized_pnl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "total_fees": {
+          "name": "total_fees",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "singleton_portfolio": {
+          "name": "singleton_portfolio",
+          "value": "\"portfolio\".\"id\" = 1"
+        },
+        "nonnegative_cash": {
+          "name": "nonnegative_cash",
+          "value": "CAST(\"portfolio\".\"cash\" AS REAL) >= 0"
+        },
+        "fixed_initial_capital": {
+          "name": "fixed_initial_capital",
+          "value": "\"portfolio\".\"initial_capital\" = '50'"
+        }
+      }
+    },
+    "positions": {
+      "name": "positions",
+      "columns": {
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cost_basis_usd": {
+          "name": "cost_basis_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entry_fees_usd": {
+          "name": "entry_fees_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "average_entry_price": {
+          "name": "average_entry_price",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "position_symbol": {
+          "name": "position_symbol",
+          "value": "\"positions\".\"symbol\" IN ('BTCUSDT', 'ETHUSDT')"
+        },
+        "positive_quantity": {
+          "name": "positive_quantity",
+          "value": "CAST(\"positions\".\"quantity\" AS REAL) > 0"
+        },
+        "nonnegative_cost": {
+          "name": "nonnegative_cost",
+          "value": "CAST(\"positions\".\"cost_basis_usd\" AS REAL) >= 0"
+        },
+        "nonnegative_entry_fees": {
+          "name": "nonnegative_entry_fees",
+          "value": "CAST(\"positions\".\"entry_fees_usd\" AS REAL) >= 0"
+        }
+      }
+    },
+    "trades": {
+      "name": "trades",
+      "columns": {
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "side": {
+          "name": "side",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "price": {
+          "name": "price",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "gross_usd": {
+          "name": "gross_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fee_usd": {
+          "name": "fee_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "net_usd": {
+          "name": "net_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "realized_pnl": {
+          "name": "realized_pnl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "trades_id_unique": {
+          "name": "trades_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "trades_created_at_idx": {
+          "name": "trades_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "trades_symbol_sequence_idx": {
+          "name": "trades_symbol_sequence_idx",
+          "columns": [
+            "symbol",
+            "sequence"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "trade_symbol": {
+          "name": "trade_symbol",
+          "value": "\"trades\".\"symbol\" IN ('BTCUSDT', 'ETHUSDT')"
+        },
+        "trade_side": {
+          "name": "trade_side",
+          "value": "\"trades\".\"side\" IN ('BUY', 'SELL')"
+        },
+        "trade_positive_quantity": {
+          "name": "trade_positive_quantity",
+          "value": "CAST(\"trades\".\"quantity\" AS REAL) > 0"
+        },
+        "trade_positive_price": {
+          "name": "trade_positive_price",
+          "value": "CAST(\"trades\".\"price\" AS REAL) > 0"
+        },
+        "trade_order_limit": {
+          "name": "trade_order_limit",
+          "value": "CAST(\"trades\".\"gross_usd\" AS REAL) > 0 AND CAST(\"trades\".\"gross_usd\" AS REAL) <= 5"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

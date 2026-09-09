@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# Deployment template: creates paid resources only when applied in Render.
+# API_TOKEN is deliberately omitted for token-free scheduled signal delivery.
+services:
+  - type: web
+    name: ai-paper-trader
+    runtime: node
+    region: singapore
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: npx --yes pnpm@11.13.1 install --frozen-lockfile --prod=false && npx --yes pnpm@11.13.1 build
+    startCommand: node dist/app/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_PATH
+        value: /var/data/paper-trader.sqlite
+      - key: LOG_LEVEL
+        value: info
+    disk:
+      name: paper-trader-data
+      mountPath: /var/data
+      sizeGB: 1
