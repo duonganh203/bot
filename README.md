@@ -167,5 +167,3 @@ Vitest covers BUY, weighted average entry, profitable/losing SELL, full liquidat
 5. Live execution as a separate phase after order lifecycle and reconciliation design.
 
 References: [Fastify validation](https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/), [Drizzle SQLite](https://orm.drizzle.team/docs/sqlite/get-started-sqlite), and [Drizzle transactions](https://orm.drizzle.team/docs/transactions).
-# bot
-# bot
