@@ -2,6 +2,8 @@
 
 A backend for an external AI agent managing a simulated **$50 portfolio**. The agent reads context and submits BUY, SELL, or HOLD signals. The backend owns validation, risk enforcement, accounting, and the audit trail. Only BTCUSDT and ETHUSDT spot paper trades are supported. There is no live exchange execution.
 
+For reproducible historical strategy research, see the separate [quant backtest](quant/README.md) and [initial comparison results](docs/QUANT_BACKTEST.md). This research tool does not change the deployed strategy or submit signals.
+
 ## Quick start
 
 Requirements: **Node.js 24** and **pnpm 11**. The lockfile records tested dependency versions. `better-sqlite3` is a native dependency; building from source requires Python and C++ build tools (Visual Studio C++ Build Tools on Windows).
