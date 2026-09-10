@@ -1,8 +1,8 @@
 [Unit]
-Description=Run AI paper signal analysis every two hours
+Description=Run AI paper signal analysis hourly at minute 02
 
 [Timer]
-OnCalendar=*-*-* 00/2:05:00 UTC
+OnCalendar=*-*-* *:02:00 UTC
 Persistent=false
 AccuracySec=1min
 Unit=ai-paper-trader-agent.service

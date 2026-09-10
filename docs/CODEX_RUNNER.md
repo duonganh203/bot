@@ -2,7 +2,7 @@
 
 The optional Linux runner fetches public Binance data, gets a marked portfolio
 context, invokes Codex CLI with the dedicated user's ChatGPT login, validates its
-JSON decision, and submits at most one paper signal per two-hour slot. No
+JSON decision, and submits at most one paper signal per UTC hourly slot. No
 `API_TOKEN`, Binance API key, or OpenAI API key is needed for this setup. Codex
 runs consume the account's Codex allowance; they are not unlimited.
 
@@ -51,7 +51,7 @@ uncommitted local files. On the VPS, as root:
 The runner uses Python's standard library. Adding only runner files does not
 require a Node rebuild or backend restart. A dry run creates context snapshots
 and local evidence, but **never POSTs a signal** and does not consume the live
-two-hour slot. Look for `"status":"dry-run"` and `"submitted":false`, then inspect
+hourly slot. Look for `"status":"dry-run"` and `"submitted":false`, then inspect
 the payload and rationale. Do not submit a saved dry-run payload later: an actual
 run must obtain new data and context.
 
@@ -71,10 +71,10 @@ curl --fail-with-body 'http://127.0.0.1:3000/api/trades?limit=3'
 
 This can submit BUY, SELL, or HOLD to the simulated portfolio. HTTP 200
 `executed`/`held` and HTTP 422 `rejected` are completed outcomes. The result prints
-the decision ID and replay status. Repeating a completed UTC two-hour slot returns
+the decision ID and replay status. Repeating a completed UTC hourly slot returns
 `skipped`, including after process restarts.
 
-## 3. Enable the two-hour timer
+## 3. Enable the hourly timer
 
 After one actual run completes, install the units as root:
 
@@ -91,11 +91,33 @@ After one actual run completes, install the units as root:
 systemctl list-timers ai-paper-trader-agent.timer --no-pager
 ```
 
-Schedule: **00:05, 02:05, ... 22:05 UTC**, five minutes after each even UTC hour.
+Schedule: **00:02, 01:02, ... 23:02 UTC**, two minutes after every UTC hour
+(24 scheduled analyses per day). Indicators still use closed **1h candles**.
+The existing AI decision policy runs each hour; this schedule change does not
+implement a new trading strategy or switch AI to a daily review.
 The timer does not catch up missed runs after downtime or immediately submit on
 enable. A manually completed slot is skipped. Systemd serializes service
 activations, and an OS lock prevents manual/scheduled overlap using the same
 state directory. Always use the same directory for this portfolio.
+
+### Upgrading an existing two-hour runner
+
+Publish these code changes before pulling them on the VPS. Stop future timer
+activations with `systemctl stop ai-paper-trader-agent.timer`, then check
+`systemctl is-active ai-paper-trader-agent.service`. If it reports `activating`
+or `active`, let that run finish before updating any files. Pull the updated
+runner, prompt, and timer together, then repeat the unit installation and
+`daemon-reload` / `enable --now` commands above. Confirm the next trigger is at
+minute 02 with `systemctl list-timers ai-paper-trader-agent.timer --no-pager`.
+The backend does not need a rebuild or restart for this change.
+
+Keep the existing state directory. New requests record `slotSeconds: 3600`.
+Completed legacy requests without that field retain their original two-hour
+window: the first hourly activation may therefore be skipped until that window
+ends. Pending legacy requests are recovered with their exact original body,
+key, and expiry before any new analysis; expired ambiguous outcomes still block
+the runner. Do not delete state to force an extra run. Keep the hourly runner
+when rolling back a strategy; older runner code cannot interpret hourly state.
 
 ```bash
 systemctl status ai-paper-trader-agent.timer --no-pager
@@ -142,10 +164,12 @@ for exact accounting and fixed risk limits. Context is not a reservation: anothe
 client can change the portfolio after the runner's final version check.
 
 Snapshots expire after 240 seconds, with a 15-second margin before each POST.
-Pending requests also expire at the next two-hour slot boundary, including UTC midnight.
-Codex has a 180-second timeout. A UTC risk-day or two-hour-slot change during
+Pending requests also expire at the next hourly slot boundary, including UTC midnight.
+Codex has a 180-second timeout. A UTC risk-day or hourly-slot change during
 analysis aborts submission. A timeout, quota failure, stale snapshot, or changed
 portfolio fails the run before creating a new pending request.
+The market server's candle hour must also match the schedule slot before
+analysis, preventing a clock-boundary mismatch from reusing the previous candle.
 
 Strategy labels are `codex-trend` and `v1-<hash>`; the hash covers prompt, schema,
 and runner source. Exact input/output and CLI logs are retained. The default model
@@ -184,6 +208,7 @@ python3 -B -m unittest discover -s runner -p 'test_runner.py' -v
 
 Tests use fixtures and a local HTTP server, never Codex, Binance, or the deployed
 portfolio. They cover lost responses after commit, recovery, exact retries, stale
-pending requests, slot deduplication, locks, dry runs, context changes, candle
+pending requests, hourly slot deduplication, legacy two-hour state upgrades,
+clock-boundary mismatches, locks, dry runs, context changes, candle
 quality, and order boundaries. Backend tests separately cover persistent receipts
 and accounting.

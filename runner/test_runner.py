@@ -23,7 +23,7 @@ def fixture():
         "risk": {"maxOrderUsd": 5, "maxExposureUsd": 20, "feeRate": 0.001,
                  "dailyLossLimitReached": False},
     }
-    market = {"startedAt": time.time(), "symbols": {
+    market = {"startedAt": time.time(), "serverTimeMs": int(time.time() * 1000), "symbols": {
         s: {"price": p, "sma20": "100", "sma50": "90", "return24hPct": "1"}
         for s, p in (("BTCUSDT", "100000"), ("ETHUSDT", "2000"))
     }}
@@ -176,11 +176,63 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.read_json(self.directory / "state.json")["complete"])
 
     def test_completed_slot_skips_even_after_restart(self):
-        state = {**self.pending(), "complete": True, "slot": int(time.time()) // 7200}
+        state = {**self.pending(), "complete": True, "slot": int(time.time()) // runner.SLOT_SECONDS,
+                 "slotSeconds": runner.SLOT_SECONDS}
         runner.save_json(self.directory / "state.json", state)
         with patch.object(runner, "collect_market") as market:
             self.assertEqual(runner.run(self.directory, state["backend"])["status"], "skipped")
             market.assert_not_called()
+
+    def test_legacy_completed_state_covers_both_hours_during_upgrade(self):
+        legacy_start = 200000 * 7200
+        state = {**self.pending(), "complete": True, "slot": legacy_start // 7200}
+        runner.save_json(self.directory / "state.json", state)
+        for now in (legacy_start + 120, legacy_start + 3600 + 120):
+            with self.subTest(now=now), patch.object(runner.time, "time", return_value=now), \
+                 patch.object(runner, "collect_market") as market:
+                self.assertEqual(runner.run(self.directory, state["backend"])["status"], "skipped")
+                market.assert_not_called()
+
+    def test_new_hour_runs_after_hourly_or_legacy_completed_window(self):
+        start = 200000 * 7200
+        for interval in (3600, 7200):
+            with self.subTest(interval=interval):
+                state = {**self.pending(), "complete": True, "slot": start // interval}
+                if interval == 3600:
+                    state["slotSeconds"] = interval
+                runner.save_json(self.directory / "state.json", state)
+                now = start + interval + 120
+                self.market.update(startedAt=now, serverTimeMs=now * 1000)
+                self.context["asOf"] = datetime.fromtimestamp(now, timezone.utc).isoformat()
+                with patch.object(runner.time, "time", return_value=now), \
+                     patch.object(runner, "collect_market", return_value=self.market), \
+                     patch.object(runner, "fetch_context", return_value=self.context), \
+                     patch.object(runner, "analyze", return_value=(self.candidate, "v1")), \
+                     patch.object(runner, "deliver", return_value={"status": "verified"}) as post:
+                    self.assertEqual(runner.run(self.directory, state["backend"])["status"], "verified")
+                post.assert_called_once()
+                saved = runner.read_json(self.directory / "state.json")
+                self.assertEqual(saved["slotSeconds"], 3600)
+                self.assertEqual(saved["slot"], now // 3600)
+
+    def test_pending_legacy_request_is_recovered_before_hourly_analysis(self):
+        state = self.pending()
+        with patch.object(runner, "deliver", return_value={"status": "recovered"}) as post, \
+             patch.object(runner, "collect_market") as market:
+            self.assertEqual(runner.run(self.directory, state["backend"])["status"], "recovered")
+        post.assert_called_once_with(self.directory, state)
+        market.assert_not_called()
+
+    def test_market_hour_mismatch_aborts_before_analysis(self):
+        now = 400001 * 3600 + 5
+        self.market["serverTimeMs"] = (now - 10) * 1000
+        with patch.object(runner.time, "time", return_value=now), \
+             patch.object(runner, "collect_market", return_value=self.market), \
+             patch.object(runner, "analyze") as analyze:
+            with self.assertRaisesRegex(ValueError, "Market candle hour"):
+                runner.run(self.directory, "http://localhost:3000")
+        analyze.assert_not_called()
+        self.assertFalse((self.directory / "state.json").exists())
 
     def test_dry_run_validates_but_never_submits_or_consumes_slot(self):
         with patch.object(runner, "collect_market", return_value=self.market), \
@@ -240,8 +292,9 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue((self.directory / "codex.stderr.log").exists())
 
     def test_no_pending_post_is_created_too_close_to_slot_boundary(self):
-        now = 200000 * 7200 - 5
+        now = 400001 * 3600 - 5
         self.market["startedAt"] = now - 30
+        self.market["serverTimeMs"] = now * 1000
         self.context["asOf"] = datetime.fromtimestamp(now - 20, timezone.utc).isoformat()
         with patch.object(runner.time, "time", return_value=now), \
              patch.object(runner, "collect_market", return_value=self.market), \
@@ -249,6 +302,20 @@ class RunnerTests(unittest.TestCase):
              patch.object(runner, "analyze", return_value=(self.candidate, "v1")):
             with self.assertRaisesRegex(ValueError, "Too close"):
                 runner.run(self.directory, "http://localhost:3000")
+        self.assertFalse((self.directory / "state.json").exists())
+
+    def test_hour_change_during_analysis_aborts_without_submission(self):
+        now = 400001 * 3600 - 20
+        self.market.update(startedAt=now, serverTimeMs=now * 1000)
+        self.context["asOf"] = datetime.fromtimestamp(now, timezone.utc).isoformat()
+        with patch.object(runner.time, "time", side_effect=[now, now + 30, now + 30, now + 30]), \
+             patch.object(runner, "collect_market", return_value=self.market), \
+             patch.object(runner, "fetch_context", return_value=self.context), \
+             patch.object(runner, "analyze", return_value=(self.candidate, "v1")), \
+             patch.object(runner, "deliver") as post:
+            with self.assertRaisesRegex(ValueError, "Schedule slot changed"):
+                runner.run(self.directory, "http://localhost:3000")
+        post.assert_not_called()
         self.assertFalse((self.directory / "state.json").exists())
 
     def test_model_timeout_fails_without_signal(self):

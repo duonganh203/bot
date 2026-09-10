@@ -2,7 +2,7 @@
 
 Deploy this backend as **one long-running Node process with persistent disk storage**. SQLite is a local database file. The repository includes a Render deployment template; it has not been deployed to a cloud account.
 
-For the existing Ubuntu 24.04 VPS with direct IP access, follow [VPS_UBUNTU.md](VPS_UBUNTU.md). It uses Git, systemd, and token-free `http://IP:3000` checks. The optional [Codex runner](CODEX_RUNNER.md) adds market-data collection and a two-hour schedule after a successful dry run.
+For the existing Ubuntu 24.04 VPS with direct IP access, follow [VPS_UBUNTU.md](VPS_UBUNTU.md). It uses Git, systemd, and token-free `http://IP:3000` checks. The optional [Codex runner](CODEX_RUNNER.md) adds market-data collection and an hourly schedule at minute 02 after a successful dry run.
 
 ## Hosted option: Render
 

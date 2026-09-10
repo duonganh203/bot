@@ -26,6 +26,7 @@ HERE = Path(__file__).resolve().parent
 SYMBOLS = ("BTCUSDT", "ETHUSDT")
 MARKET_URL = "https://data-api.binance.vision"
 HOUR_MS = 3_600_000
+SLOT_SECONDS = HOUR_MS // 1000
 MAX_AGE = 240  # Includes market collection, reasoning, and POST retries.
 HTTP_TIMEOUT = 15
 CODEX_TIMEOUT = 180
@@ -291,12 +292,16 @@ def run(state_dir, backend, dry_run=False, codex="codex"):
         if not state["complete"]:
             require(not dry_run, "Pending submission exists; resolve it before starting another analysis")
             return deliver(state_dir, state)
-    slot = int(time.time()) // 7200
-    if not dry_run and state and state["slot"] >= slot:
-        return {"status": "skipped", "reason": "This UTC two-hour slot is already complete"}
+    slot = int(time.time()) // SLOT_SECONDS
+    # Old state files use two-hour slot numbers. Honor their full covered window
+    # during upgrades so a completed decision cannot be submitted again.
+    if not dry_run and state and (state["slot"] + 1) * state.get("slotSeconds", 7200) > slot * SLOT_SECONDS:
+        return {"status": "skipped", "reason": "This UTC hourly slot is already covered by a completed decision"}
     run_dir = state_dir / "runs" / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex)
     run_dir.mkdir(parents=True)
     market = collect_market()
+    require(market["serverTimeMs"] // HOUR_MS == slot,
+            "Market candle hour differs from schedule slot; rerun with fresh data")
     context = fetch_context(backend, market)
     snapshot = {"market": market, "context": context}
     save_json(run_dir / "snapshot.json", snapshot)
@@ -312,10 +317,11 @@ def run(state_dir, backend, dry_run=False, codex="codex"):
         result = {"status": "dry-run", "payload": payload, "runDir": str(run_dir), "submitted": False}
         save_json(run_dir / "result.json", result)
         return result
-    require(int(time.time()) // 7200 == slot, "Schedule slot changed during analysis; rerun")
-    expires_at = min(market["startedAt"] + MAX_AGE, (slot + 1) * 7200)
+    require(int(time.time()) // SLOT_SECONDS == slot, "Schedule slot changed during analysis; rerun")
+    expires_at = min(market["startedAt"] + MAX_AGE, (slot + 1) * SLOT_SECONDS)
     require(time.time() + HTTP_TIMEOUT < expires_at, "Too close to snapshot/slot expiry; rerun")
     state = {"complete": False, "backend": backend, "slot": slot, "runDir": str(run_dir),
+             "slotSeconds": SLOT_SECONDS,
              "expiresAt": expires_at, "key": str(uuid.uuid4()), "body": dumps(payload)}
     # Both the bytes and key reach durable storage before the first possible POST.
     save_json(run_dir / "request.json", state)

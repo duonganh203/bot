@@ -49,7 +49,7 @@ Run one writer process with `dist/`, `drizzle/`, installed dependencies, and per
 
 ## Connecting scheduled AI Trade Signal
 
-For the VPS with a ChatGPT-authenticated Codex CLI, use the included **[Codex runner](docs/CODEX_RUNNER.md)**. It fetches public market data, validates a structured decision, persists retries, and includes a systemd timer for every two hours. Start with a dry run; installing the backend alone does not activate the runner.
+For the VPS with a ChatGPT-authenticated Codex CLI, use the included **[Codex runner](docs/CODEX_RUNNER.md)**. It fetches public market data, validates a structured decision, persists retries, and includes a systemd timer for every hour at minute 02. Start with a dry run; installing the backend alone does not activate the runner.
 
 The local `.env` and Render template use token-free access. For each scheduled run:
 

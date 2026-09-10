@@ -1,4 +1,18 @@
-# Verification — 2026-09-09
+# Verification
+
+## Hourly runner update — 2026-09-10
+
+The runner and timer now use one UTC hour per slot, scheduled at minute 02,
+with unchanged hourly candles and trading rules. All 25 runner tests passed
+on Ubuntu WSL, including five new cases for legacy two-hour completed/pending
+state, next-hour execution, market-clock disagreement, and an hour changing
+during analysis. State records its slot duration; legacy pending requests keep
+their original bytes, key, and expiry. No real model or deployed API was called.
+
+This is a local code update; the VPS timer still requires deployment using
+[docs/CODEX_RUNNER.md](docs/CODEX_RUNNER.md#upgrading-an-existing-two-hour-runner).
+
+## Earlier verification — 2026-09-09
 
 ## Optional VPS runner
 
