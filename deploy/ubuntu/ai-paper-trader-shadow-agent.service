@@ -1,0 +1,20 @@
+[Unit]
+Description=Run fixed paper control against the completed AI snapshot
+After=ai-paper-trader-shadow.service
+Requires=ai-paper-trader-shadow.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+WorkingDirectory=/home/trade-agent/paper-shadow
+Environment=HOME=/home/trade-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-trader/runner/shadow.py
+UMask=0077
+TimeoutStartSec=2min
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-shadow
+ReadOnlyPaths=/home/trade-agent/paper-runner
+PrivateTmp=true

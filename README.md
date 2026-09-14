@@ -4,6 +4,8 @@ A backend for an external AI agent managing a simulated **$50 portfolio**. The a
 
 For reproducible historical strategy research, see the separate [quant backtest](quant/README.md) and [initial comparison results](docs/QUANT_BACKTEST.md). This research tool does not change the deployed strategy or submit signals.
 
+For a separate forward paper portfolio that trades fixed rules against the AI's saved market inputs, see the [shadow control guide](docs/SHADOW_CONTROL.md). It uses its own backend/database and records action comparisons without changing the original AI strategy.
+
 ## Quick start
 
 Requirements: **Node.js 24** and **pnpm 11**. The lockfile records tested dependency versions. `better-sqlite3` is a native dependency; building from source requires Python and C++ build tools (Visual Studio C++ Build Tools on Windows).
