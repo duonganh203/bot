@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect once per hour with immutable retry
+
+[Timer]
+OnCalendar=*-*-* *:02:00 UTC
+OnCalendar=*-*-* *:02:30 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-v2-market.service
+
+[Install]
+WantedBy=timers.target

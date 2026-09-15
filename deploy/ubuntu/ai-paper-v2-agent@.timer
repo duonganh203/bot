@@ -1,0 +1,14 @@
+[Unit]
+Description=Hourly v2 paper consumer (%i), independent of sibling consumer
+
+[Timer]
+OnCalendar=*-*-* *:02:15 UTC
+OnCalendar=*-*-* *:02:45 UTC
+OnCalendar=*-*-* *:03:15 UTC
+OnCalendar=*-*-* *:03:45 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-v2-agent@%i.service
+
+[Install]
+WantedBy=timers.target

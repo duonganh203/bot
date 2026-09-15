@@ -1,0 +1,18 @@
+[Unit]
+Description=Publish independent hourly paper market snapshot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+Environment=HOME=/home/trade-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-trader/runner/market_snapshot.py
+UMask=0077
+TimeoutStartSec=90s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-v2/market
+PrivateTmp=true

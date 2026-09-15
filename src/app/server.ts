@@ -2,7 +2,7 @@ import { buildApp } from './build-app.js';
 import { loadEnv } from '../config/env.js';
 
 const env = loadEnv();
-const app = buildApp({ databasePath: env.DATABASE_PATH, logger: { level: env.LOG_LEVEL }, apiToken: env.API_TOKEN });
+const app = buildApp({ databasePath: env.DATABASE_PATH, logger: { level: env.LOG_LEVEL }, apiToken: env.API_TOKEN, riskPolicy: env.RISK_POLICY });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

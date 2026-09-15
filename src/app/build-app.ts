@@ -12,6 +12,8 @@ import { HistoryService } from '../services/history-service.js';
 import { ReviewService } from '../services/review-service.js';
 import { SqliteReviewRepository } from '../repositories/sqlite/review-repository.js';
 import { AppError } from '../shared/errors.js';
+import { RiskEngine } from '../risk/risk-engine.js';
+import type { RiskPolicy } from '../risk/limits.js';
 import { registerRoutes } from './routes/trading.js';
 
 export interface AppOptions {
@@ -21,6 +23,7 @@ export interface AppOptions {
   clock?: () => Date;
   executor?: TradeExecutor;
   marketData?: MarketDataProvider;
+  riskPolicy?: RiskPolicy;
 }
 
 export function buildApp(options: AppOptions) {
@@ -28,8 +31,8 @@ export function buildApp(options: AppOptions) {
   const connection = openDatabase(options.databasePath, clock());
   const repository = new SqliteTradingRepository(connection);
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 16_384, requestTimeout: 15_000 });
-  const trading = new TradingService(repository, options.executor ?? new PaperTradeExecutor(), undefined, clock, options.marketData);
-  const portfolio = new PortfolioService(repository, clock, options.marketData);
+  const trading = new TradingService(repository, options.executor ?? new PaperTradeExecutor(), new RiskEngine(undefined, options.riskPolicy), clock, options.marketData);
+  const portfolio = new PortfolioService(repository, clock, options.marketData, undefined, options.riskPolicy);
 
   if (options.apiToken) {
     const expected = Buffer.from(`Bearer ${options.apiToken}`);

@@ -6,3 +6,7 @@ export const LIMITS = Object.freeze({
   maxDailyLossUsd: '3',
   feeRate: '0.001',
 });
+
+export type RiskPolicy = 'legacy-v1' | 'reduce-only-v2';
+export const MAX_EQUITY_LOSS_USD = '3';
+export const equityFloor = (initialCapital: import('../shared/decimal.js').Amount) => initialCapital.minus(MAX_EQUITY_LOSS_USD);

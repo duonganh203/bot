@@ -1,0 +1,19 @@
+[Unit]
+Description=V2 paper strategy consumer (%i)
+Requires=ai-paper-v2-backend@%i.service
+After=network-online.target ai-paper-v2-backend@%i.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+WorkingDirectory=/home/trade-agent/paper-v2/%i
+Environment=HOME=/home/trade-agent
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-trader/runner/paired.py --mode %i
+UMask=0077
+TimeoutStartSec=4min
+KillMode=control-group
+Nice=10
+# Keep the dedicated user's existing Codex/bwrap/AppArmor configuration.

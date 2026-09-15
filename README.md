@@ -4,7 +4,7 @@ A backend for an external AI agent managing a simulated **$50 portfolio**. The a
 
 For reproducible historical strategy research, see the separate [quant backtest](quant/README.md) and [initial comparison results](docs/QUANT_BACKTEST.md). This research tool does not change the deployed strategy or submit signals.
 
-For a separate forward paper portfolio that trades fixed rules against the AI's saved market inputs, see the [shadow control guide](docs/SHADOW_CONTROL.md). It uses its own backend/database and records action comparisons without changing the original AI strategy.
+The current paired experiment is described in the [v2 quant architecture guide](docs/QUANT_V2.md): independent market snapshots, one shared portfolio policy, optional AI entry veto, and risk rules that permit reducing sells. V1's [shadow control guide](docs/SHADOW_CONTROL.md) remains as historical documentation.
 
 ## Quick start
 
@@ -48,6 +48,7 @@ Run one writer process with `dist/`, `drizzle/`, installed dependencies, and per
 | `DATABASE_PATH` | `./data/paper-trader.sqlite` | SQLite file; use an absolute persistent path in production |
 | `LOG_LEVEL` | `info` | Fastify log level |
 | `API_TOKEN` | Empty | Optional bearer token; leave empty or omit for token-free access |
+| `RISK_POLICY` | `legacy-v1` | Use `reduce-only-v2` for the paired experiment; requires fresh context on orders and adds total-equity protection |
 
 `API_TOKEN` is optional on every HOST. With an empty token, clients do not send an `Authorization` header. If a token is configured, API requests require `Authorization: Bearer <token>`; `/health` remains public.
 

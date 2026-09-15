@@ -4,10 +4,11 @@ import { markedPositions } from '../domain/trading/valuation.js';
 import type { Marks } from '../domain/trading/valuation.js';
 import { decimal, quantityFor } from '../shared/decimal.js';
 import { DailyRiskService } from './daily-risk.js';
-import { LIMITS } from './limits.js';
+import { equityFloor, LIMITS } from './limits.js';
+import type { RiskPolicy } from './limits.js';
 
 export class RiskEngine {
-  constructor(private readonly dailyRisk = new DailyRiskService()) {}
+  constructor(private readonly dailyRisk = new DailyRiskService(), readonly policy: RiskPolicy = 'legacy-v1') {}
 
   evaluate(signal: OrderSignal, snapshot: TradingSnapshot, marks: Marks, now: Date): RiskDecision {
     if (!isTradingSymbol(signal.symbol)) {
@@ -16,7 +17,8 @@ export class RiskEngine {
     if (signal.amountUsd.gt(LIMITS.maxOrderUsd)) {
       return { approved: false, code: 'ORDER_TOO_LARGE', reason: 'Order exceeds max order size of $5.' };
     }
-    if (this.dailyRisk.compute(snapshot.tradesToday, now).blocked) {
+    if (this.dailyRisk.compute(snapshot.tradesToday, now).blocked &&
+        (this.policy === 'legacy-v1' || signal.action === 'BUY')) {
       return { approved: false, code: 'DAILY_LOSS_LIMIT', reason: 'UTC daily realized loss has reached $3.' };
     }
     if (signal.action === 'SELL') {
@@ -31,6 +33,10 @@ export class RiskEngine {
       }
       const exposure = markedPositions(snapshot.positions, marks)
         .reduce((sum, position) => sum.plus(position.marketValue), decimal(0));
+      if (this.policy === 'reduce-only-v2' && snapshot.portfolio.cash.plus(exposure)
+        .minus(signal.amountUsd.mul(LIMITS.feeRate)).lte(equityFloor(snapshot.portfolio.initialCapital))) {
+        return { approved: false, code: 'EQUITY_LOSS_LIMIT', reason: 'BUY would leave marked equity at or below initial capital minus $3, including entry fee.' };
+      }
       if (exposure.plus(signal.amountUsd).gt(LIMITS.maxExposureUsd)) {
         return { approved: false, code: 'MAX_EXPOSURE', reason: 'BUY would exceed $20 marked portfolio exposure.' };
       }

@@ -1,0 +1,22 @@
+[Unit]
+Description=V2 isolated paper backend (%i)
+After=network.target
+
+[Service]
+User=paper-trader
+Group=paper-trader
+WorkingDirectory=/opt/ai-paper-trader
+EnvironmentFile=/etc/ai-paper-v2-%i.env
+ExecStart=/usr/bin/node /opt/ai-paper-trader/dist/app/server.js
+Restart=on-failure
+RestartSec=3
+StateDirectory=ai-paper-v2-%i
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

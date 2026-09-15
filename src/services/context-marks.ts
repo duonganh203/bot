@@ -1,0 +1,36 @@
+import { z } from 'zod';
+import type { ContextSnapshot, OrderSignal, PriceBook, TradingSnapshot } from '../domain/trading/types.js';
+import { SYMBOLS } from '../domain/trading/types.js';
+import { decimal } from '../shared/decimal.js';
+import { AppError } from '../shared/errors.js';
+
+const quote = z.object({ price: z.number().positive(), asOf: z.string() });
+const shape = z.object({ marketData: z.object({ quotes: z.object({ BTCUSDT: quote, ETHUSDT: quote }) }) });
+
+// V2 must not value the other coin using an hours-old last fill. Use the exact
+// persisted decision snapshot and reject stale/version-mismatched submissions.
+export function contextMarks(context: ContextSnapshot | undefined, snapshot: TradingSnapshot, signal: OrderSignal, now: Date): PriceBook {
+  if (!context) throw new AppError('FRESH_CONTEXT_REQUIRED', 'V2 orders require a context with both current quotes.', 422);
+  if (context.portfolioVersion !== snapshot.portfolio.version) {
+    throw new AppError('CONTEXT_VERSION_CONFLICT', 'Portfolio changed after the supplied context.', 409);
+  }
+  const fresh = (asOf: string) => {
+    const age = now.getTime() - Date.parse(asOf);
+    return Number.isFinite(age) && age >= -30_000 && age < 240_000 && asOf.slice(0, 10) === now.toISOString().slice(0, 10);
+  };
+  const parsed = shape.safeParse(context.payload);
+  if (!fresh(context.createdAt) || !parsed.success) {
+    throw new AppError('FRESH_CONTEXT_REQUIRED', 'V2 context must include fresh quotes for both coins.', 422);
+  }
+  const prices: PriceBook = {};
+  for (const symbol of SYMBOLS) {
+    const value = parsed.data.marketData.quotes[symbol];
+    if (!fresh(value.asOf)) throw new AppError('FRESH_CONTEXT_REQUIRED', `Stale context quote: ${symbol}.`, 422);
+    prices[symbol] = { price: decimal(value.price), asOf: value.asOf, source: 'decision-context' };
+  }
+  const mark = prices[signal.symbol as keyof PriceBook];
+  if (mark && !mark.price.eq(signal.price)) {
+    throw new AppError('CONTEXT_PRICE_MISMATCH', 'Order price differs from the saved decision context.', 422);
+  }
+  return prices;
+}

@@ -1,5 +1,9 @@
 # Forward paper control alongside the AI
 
+Historical V1 design. The successor is [Quant V2](QUANT_V2.md); its independent
+market producer removes the AI dependency and its common policy removes sizing
+and exit differences. Keep V1 databases and evidence separate from V2 results.
+
 The control buys when the fixed trend conditions qualify, without an AI veto.
 It owns a fresh $50 account on a separate backend/database. The original AI
 runner, prompt, portfolio and minute-02 timer continue unchanged.

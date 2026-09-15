@@ -14,6 +14,7 @@ import { SerialQueue } from '../shared/serial-queue.js';
 import { AppError } from '../shared/errors.js';
 import { toJson } from '../shared/json.js';
 import { captureDecisionContext } from './decision-audit.js';
+import { contextMarks } from './context-marks.js';
 
 export class TradingService {
   private readonly queue = new SerialQueue();
@@ -74,12 +75,13 @@ export class TradingService {
     if (signal.action === 'HOLD') {
       const result: SignalResult = { status: 'held', decisionId: decision.id };
       this.repository.saveDecision(decision, {
-        executionContext: captureDecisionContext(snapshot, now, new Map(), null, agentContext, this.marketData ? 'provider' : 'manual'),
+        executionContext: captureDecisionContext(snapshot, now, new Map(), null, agentContext, this.marketData ? 'provider' : 'manual', this.risk.policy),
         receipt: receiptFor(result),
       });
       return result;
     }
-    const prices = { ...snapshot.prices };
+    const prices = this.risk.policy === 'reduce-only-v2'
+      ? contextMarks(agentContext, snapshot, signal, now) : { ...snapshot.prices };
     if (isTradingSymbol(signal.symbol)) {
       prices[signal.symbol] = { price: signal.price, asOf: timestamp, source: 'signal' };
     }
@@ -88,7 +90,7 @@ export class TradingService {
     const auditMarks: Marks = isTradingSymbol(signal.symbol) && !marks.has(signal.symbol)
       ? new Map(marks).set(signal.symbol, signal.price) : marks;
     const executionContext = captureDecisionContext(
-      { ...snapshot, prices }, now, auditMarks, risk, agentContext, this.marketData ? 'provider' : 'manual',
+      { ...snapshot, prices }, now, auditMarks, risk, agentContext, this.marketData ? 'provider' : 'manual', this.risk.policy,
     );
     if (!risk.approved) {
       const result: SignalResult = { status: 'rejected', decisionId: decision.id, risk: { code: risk.code, reason: risk.reason } };

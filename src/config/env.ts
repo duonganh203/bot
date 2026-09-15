@@ -7,6 +7,7 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().min(1).default('./data/paper-trader.sqlite'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   API_TOKEN: z.string().default(''),
+  RISK_POLICY: z.enum(['legacy-v1', 'reduce-only-v2']).default('legacy-v1'),
 });
 
 export function loadEnv(input: NodeJS.ProcessEnv = process.env) {
