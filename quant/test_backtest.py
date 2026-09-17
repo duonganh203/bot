@@ -50,6 +50,16 @@ class DataTests(unittest.TestCase):
         self.assertFalse(bt.exit_signal("mean_reversion", f, 23))
         self.assertTrue(bt.exit_signal("mean_reversion", f, 24))
 
+    def test_fast_candidate_can_enter_early_recovery_but_requires_six_hour_momentum(self):
+        f = {"close": 103, "sma5": 102, "sma20": 101, "sma50": 105,
+             "return6h": 0.01, "return24h": -0.02}
+        self.assertTrue(bt.entry("trend_fast", f, f))
+        self.assertFalse(bt.entry("trend_proxy", f, f))
+        f["return6h"] = 0
+        self.assertFalse(bt.entry("trend_fast", f, f))
+        f.update(close=100, return6h=-0.01)
+        self.assertTrue(bt.exit_signal("trend_fast", f, 1))
+
 
 class AccountTests(unittest.TestCase):
     def setUp(self):
@@ -136,13 +146,14 @@ class SimulationTests(unittest.TestCase):
         changed = {s: original[s][:121] + [bt.Candle(c.time, 50, 55, 45, 50, 1) for c in original[s][121:]]
                    for s in bt.SYMBOLS}
         f2 = {s: bt.indicators(changed[s]) for s in bt.SYMBOLS}
-        for strategy in bt.STRATEGIES:
-            with self.subTest(strategy=strategy):
-                a = bt.simulate(strategy, original, f1, 100 * bt.HOUR, 170 * bt.HOUR, D("0.0005"))
-                b = bt.simulate(strategy, changed, f2, 100 * bt.HOUR, 170 * bt.HOUR, D("0.0005"))
-                cutoff = bt.iso(121 * bt.HOUR)
-                self.assertEqual([t for t in a["trades"] if t["time"] < cutoff],
-                                 [t for t in b["trades"] if t["time"] < cutoff])
+        for strategy in bt.STRATEGIES + bt.EXPERIMENTAL_STRATEGIES:
+            for risk_policy in bt.RISK_POLICIES:
+                with self.subTest(strategy=strategy, risk_policy=risk_policy):
+                    a = bt.simulate(strategy, original, f1, 100 * bt.HOUR, 170 * bt.HOUR, D("0.0005"), risk_policy)
+                    b = bt.simulate(strategy, changed, f2, 100 * bt.HOUR, 170 * bt.HOUR, D("0.0005"), risk_policy)
+                    cutoff = bt.iso(121 * bt.HOUR)
+                    self.assertEqual([t for t in a["trades"] if t["time"] < cutoff],
+                                     [t for t in b["trades"] if t["time"] < cutoff])
 
     def test_partial_exit_stays_queued_and_takes_priority_over_new_entry(self):
         data, features = self.inputs()
@@ -164,6 +175,48 @@ class SimulationTests(unittest.TestCase):
         self.assertLess(zero["summary"]["endEquity"], 50)
         self.assertEqual(cash["summary"]["endEquity"], 50)
         self.assertEqual(cash["summary"]["maxDrawdownPct"], 0)
+
+
+class V2RiskTests(unittest.TestCase):
+    def test_reducing_sell_survives_daily_loss_but_buy_does_not(self):
+        account = bt.Account(risk_policy="reduce-only-v2")
+        marks = {s: D(100) for s in bt.SYMBOLS}
+        account.fill("BUY", "BTCUSDT", D(100), marks, 0, -bt.HOUR)
+        account.fill("BUY", "ETHUSDT", D(100), marks, bt.HOUR, 0)
+        marks["BTCUSDT"] = D(10)
+        account.fill("SELL", "BTCUSDT", D(10), marks, 2 * bt.HOUR, bt.HOUR)
+        self.assertLess(account.daily_pnl, -3)
+        self.assertFalse(account.fill("BUY", "BTCUSDT", D(10), marks, 3 * bt.HOUR, 2 * bt.HOUR))
+        self.assertTrue(account.fill("SELL", "ETHUSDT", D(100), marks, 3 * bt.HOUR, 2 * bt.HOUR))
+
+    def test_entry_fee_counts_against_equity_floor_and_floor_persists_next_day(self):
+        account = bt.Account(risk_policy="reduce-only-v2")
+        marks = {s: D(100) for s in bt.SYMBOLS}
+        account.cash = D("47.005")
+        self.assertFalse(account.fill("BUY", "BTCUSDT", D(100), marks, 0, -bt.HOUR))
+        self.assertFalse(account.fill("BUY", "BTCUSDT", D(100), marks, 24 * bt.HOUR, 23 * bt.HOUR))
+        account.cash += D("0.000001")
+        self.assertTrue(account.fill("BUY", "BTCUSDT", D(100), marks, 24 * bt.HOUR, 23 * bt.HOUR))
+
+    def test_price_gap_forces_both_exits_one_per_hour_and_can_overshoot_floor(self):
+        data = {s: [bt.Candle(i * bt.HOUR, p, p + 1, p - 1, p, 1)
+                    for i in range(80) for p in [100 if i < 60 else 10]] for s in bt.SYMBOLS}
+        features = {s: bt.indicators(data[s]) for s in bt.SYMBOLS}
+        run = bt.simulate("buy_hold", data, features, 52 * bt.HOUR, 70 * bt.HOUR, D(0), "reduce-only-v2")
+        self.assertEqual([(t["action"], t["symbol"]) for t in run["trades"]],
+                         [("BUY", "BTCUSDT"), ("BUY", "ETHUSDT"), ("SELL", "BTCUSDT"), ("SELL", "ETHUSDT")])
+        self.assertEqual([t["time"] for t in run["trades"][2:]], [bt.iso(60 * bt.HOUR), bt.iso(61 * bt.HOUR)])
+        self.assertLess(run["summary"]["endEquity"], 47)
+        self.assertEqual(run["summary"]["closedRoundTrips"], 2)
+
+    def test_v2_entry_priority_is_btc_even_after_a_btc_exit(self):
+        data = {s: series() for s in bt.SYMBOLS}
+        features = {s: bt.indicators(data[s]) for s in bt.SYMBOLS}
+        features["BTCUSDT"][100].update(close=90, return24h=-0.1)
+        data["BTCUSDT"][101] = bt.Candle(101 * bt.HOUR, 100, 101, 99, 100, 1)
+        run = bt.simulate("trend_proxy", data, features, 100 * bt.HOUR, 103 * bt.HOUR, D(0), "reduce-only-v2")
+        self.assertEqual([(t["action"], t["symbol"]) for t in run["trades"]],
+                         [("BUY", "BTCUSDT"), ("SELL", "BTCUSDT"), ("BUY", "BTCUSDT")])
 
 
 if __name__ == "__main__":

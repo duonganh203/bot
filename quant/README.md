@@ -1,5 +1,33 @@
 # Historical strategy research
 
+The [September 17 follow-up](../docs/QUANT_RESEARCH_20260917.md) tests a faster
+5/20-hour trend candidate and the original alternatives under V2 risk rules.
+The faster candidate increased turnover without establishing a profitable
+replacement. Production V2 remains a separate, unchanged paper experiment.
+
+To reproduce that comparison using the original two-year cache:
+
+```bash
+python3 -B quant/backtest.py --offline --risk-policy reduce-only-v2 --strategies trend_proxy trend_no_24h trend_fast breakout mean_reversion buy_hold cash --output-dir data/quant/v2-research-20260917-history
+python3 -B quant/backtest.py --start 2026-09-01 --split 2026-09-09 --end 2026-09-17 --risk-policy reduce-only-v2 --strategies trend_proxy trend_no_24h trend_fast breakout mean_reversion buy_hold cash --output-dir data/quant/v2-research-20260917-recent
+```
+
+Add `--offline` to the second command after its first download. End dates are
+exclusive. Both samples are historical research, not the live bot's PnL.
+The September 9–16 window contains only eight days, and the older history was
+already reviewed before the new candidate was added.
+
+`--risk-policy reduce-only-v2` permits reducing sells after a daily loss,
+forces capped exits at a $47 sampled-equity threshold, checks entry fees
+against that threshold, and gives BTC priority like V2. That threshold is not
+a guaranteed maximum loss: gaps and hourly/capped exits can overshoot it.
+`dailyLossBlockedHours`, `equityLossBlockedHours`, and `riskBlockedHours`
+separate loss-based inactivity from the entry filters; longest-no-buy periods
+can include a halted account. Buy-and-hold also receives the selected risk overlay.
+
+The original defaults below retain `legacy-v1` and the six original strategies
+for reproducibility. `trend_fast` is opt-in, with no automatic activation.
+
 `backtest.py` compares fixed technical-rule candidates on BTCUSDT and ETHUSDT
 hourly spot data. It uses Python 3's standard library and is separate from the
 deployed runner. It does not invoke Codex, read credentials or the portfolio

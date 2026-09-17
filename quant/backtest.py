@@ -22,6 +22,8 @@ D = Decimal
 CAPITAL, ORDER, EXPOSURE, DAILY_LOSS = D("50"), D("5"), D("20"), D("3")
 FEE = D("0.001")
 STRATEGIES = ("trend_proxy", "trend_no_24h", "breakout", "mean_reversion", "buy_hold", "cash")
+EXPERIMENTAL_STRATEGIES = ("trend_fast",)
+RISK_POLICIES = ("legacy-v1", "reduce-only-v2")
 RULES = {
     "trend_proxy": "BUY close > SMA20 > SMA50 and 24h return > 0; exit close < SMA20 and 24h return < 0.",
     "trend_no_24h": "Same as trend_proxy, removing ONLY the 24h filter from BUY; identical exit.",
@@ -29,6 +31,7 @@ RULES = {
     "mean_reversion": "BUY when z-score crosses back above -2 from <= -2, relative to each candle's prior 20 closes; exit at prior-20 mean or after 24 elapsed hours from entry.",
     "buy_hold": "One $5 entry per symbol at the first available execution slots; hold to period end.",
     "cash": "Keep all $50 in cash; no interest accrual.",
+    "trend_fast": "BUY close > SMA5 > SMA20 and 6h return > 0; exit close < SMA5 and 6h return < 0. Fixed research candidate added 2026-09-17.",
 }
 
 
@@ -127,9 +130,11 @@ def indicators(candles):
         close = candles[i].close
         result[i] = {
             "close": close,
+            "sma5": statistics.mean(c.close for c in candles[i - 4:i + 1]),
             "sma20": statistics.mean(c.close for c in candles[i - 19:i + 1]),
             "sma50": statistics.mean(c.close for c in candles[i - 49:i + 1]),
             "return24h": close / candles[i - 24].close - 1,
+            "return6h": close / candles[i - 6].close - 1,
             "priorHigh20": max(c.high for c in candles[i - 20:i]),
             "priorLow10": min(c.low for c in candles[i - 10:i]),
             "priorMean20": mean,
@@ -139,6 +144,8 @@ def indicators(candles):
 
 
 def entry(strategy, features, previous):
+    if strategy == "trend_fast":
+        return features["close"] > features["sma5"] > features["sma20"] and features["return6h"] > 0
     if strategy in ("trend_proxy", "trend_no_24h"):
         return (features["close"] > features["sma20"] > features["sma50"]
                 and (strategy == "trend_no_24h" or features["return24h"] > 0))
@@ -150,6 +157,8 @@ def entry(strategy, features, previous):
 
 
 def exit_signal(strategy, features, held_hours):
+    if strategy == "trend_fast":
+        return features["close"] < features["sma5"] and features["return6h"] < 0
     if strategy in ("trend_proxy", "trend_no_24h"):
         return features["close"] < features["sma20"] and features["return24h"] < 0
     if strategy == "breakout":
@@ -170,7 +179,10 @@ class Position:
 
 
 class Account:
-    def __init__(self, fee=FEE):
+    def __init__(self, fee=FEE, risk_policy="legacy-v1"):
+        if risk_policy not in RISK_POLICIES:
+            raise ValueError("Unknown risk policy")
+        self.risk_policy = risk_policy
         self.cash, self.fees, self.realized = CAPITAL, D(0), D(0)
         self.positions = {s: Position() for s in SYMBOLS}
         self.day, self.daily_pnl = None, D(0)
@@ -190,14 +202,16 @@ class Account:
         return self.cash + self.exposure(marks)
 
     def fill(self, side, symbol, price, marks, stamp, signal_time):
-        """Decimal accounting, $5 order cap and both-side daily-loss block match backend policy."""
+        """Decimal accounting; V2 allows reducing sells and checks marked equity on BUY."""
         if side not in ("BUY", "SELL") or price <= 0:
             raise ValueError("Invalid order")
         self.roll_day(stamp)
-        if self.daily_pnl <= -DAILY_LOSS:
+        if self.daily_pnl <= -DAILY_LOSS and (side == "BUY" or self.risk_policy == "legacy-v1"):
             return False
         position = self.positions[symbol]
         if side == "BUY":
+            if self.risk_policy == "reduce-only-v2" and self.equity(marks) - ORDER * self.fee <= CAPITAL - D("3"):
+                return False
             if position.quantity or self.cash < ORDER * (1 + self.fee) or self.exposure(marks) + ORDER > EXPOSURE:
                 return False
             gross, fee = ORDER, ORDER * self.fee
@@ -241,16 +255,17 @@ class Account:
         return True
 
 
-def simulate(strategy, candles, features, start, end, slippage):
-    if strategy not in STRATEGIES:
+def simulate(strategy, candles, features, start, end, slippage, risk_policy="legacy-v1"):
+    if strategy not in STRATEGIES + EXPERIMENTAL_STRATEGIES:
         raise ValueError("Unknown strategy")
-    account = Account()
+    account = Account(risk_policy=risk_policy)
     indices = [i for i, c in enumerate(candles[SYMBOLS[0]]) if start <= c.time < end]
     if not indices or indices[0] < 52:
         raise ValueError("Evaluation period needs at least 52 warm-up candles")
     curve, daily = [], {}
     peak, max_drawdown, exposure_sum, hours_in_market = float(CAPITAL), 0.0, 0.0, 0
-    blocked_hours, eligible_entries, buy_gate_hours, no_buy_streak, longest_no_buy = 0, 0, 0, 0, 0
+    blocked_hours, daily_blocked_hours, equity_blocked_hours = 0, 0, 0
+    eligible_entries, buy_gate_hours, no_buy_streak, longest_no_buy = 0, 0, 0, 0
     last_buy_symbol = None
     for i in indices:
         stamp = candles[SYMBOLS[0]][i].time
@@ -261,22 +276,30 @@ def simulate(strategy, candles, features, start, end, slippage):
         eligible_entries += len(candidates)
         buy_gate_hours += bool(candidates)
         opens = {s: D(str(candles[s][i].open)) for s in SYMBOLS}
+        risk_exit = risk_policy == "reduce-only-v2" and (
+            account.equity(opens) <= CAPITAL - D("3") or account.daily_pnl <= -DAILY_LOSS)
         for s, position in account.positions.items():
-            if position.quantity and exit_signal(strategy, signal[s], (stamp - position.entered) // HOUR):
+            if position.quantity and (risk_exit or exit_signal(strategy, signal[s], (stamp - position.entered) // HOUR)):
                 position.closing = True  # Complete a capped exit even if its signal later disappears.
         closing = [s for s in SYMBOLS if account.positions[s].closing]
         bought = False
-        if account.daily_pnl <= -DAILY_LOSS:
+        daily_blocked = account.daily_pnl <= -DAILY_LOSS
+        equity_blocked = risk_policy == "reduce-only-v2" and account.equity(opens) - ORDER * FEE <= CAPITAL - D("3")
+        daily_blocked_hours += daily_blocked
+        equity_blocked_hours += equity_blocked
+        if daily_blocked or equity_blocked:
             blocked_hours += 1
-        elif closing:
-            # Oldest pending exit first. All strategies share this one-action scheduler.
-            symbol = min(closing, key=lambda s: (account.positions[s].entered, s))
+        legacy_blocked = daily_blocked and risk_policy == "legacy-v1"
+        if closing and not legacy_blocked:
+            # V2 uses BTC first; preserve V1's oldest-pending-exit scheduler.
+            symbol = closing[0] if risk_policy == "reduce-only-v2" else min(closing, key=lambda s: (account.positions[s].entered, s))
             price = opens[symbol] * (1 - slippage)
             account.fill("SELL", symbol, price, {**opens, symbol: price}, stamp, candles[symbol][i - 1].time)
-        else:
+        elif not legacy_blocked:
             candidates = [s for s in candidates if not account.positions[s].quantity]
             # Deterministic alternation avoids always choosing BTC when both signal together.
-            candidates.sort(key=lambda s: (s == last_buy_symbol, s))
+            if risk_policy == "legacy-v1":
+                candidates.sort(key=lambda s: (s == last_buy_symbol, s))
             if candidates:
                 symbol = candidates[0]
                 price = opens[symbol] * (1 + slippage)
@@ -311,6 +334,7 @@ def simulate(strategy, candles, features, start, end, slippage):
     gross_wins, gross_losses = sum(x for x in rounds if x > 0), -sum(x for x in rounds if x < 0)
     summary = {
         "strategy": strategy, "start": iso(start), "endExclusive": iso(end), "hours": len(indices),
+        "riskPolicy": risk_policy,
         "initialEquity": float(CAPITAL), "endEquity": end_equity, "pnlUsd": end_equity - float(CAPITAL),
         "returnPct": (end_equity / float(CAPITAL) - 1) * 100,
         "estimatedNetExitEquity": estimated_net_equity,
@@ -324,7 +348,8 @@ def simulate(strategy, candles, features, start, end, slippage):
         "closedRoundTrips": len(rounds), "winRatePct": 100 * sum(x > 0 for x in rounds) / len(rounds) if rounds else None,
         "profitFactor": gross_wins / gross_losses if gross_losses else None,
         "entrySignalSymbolHours": eligible_entries, "hoursWithEntrySignalPct": 100 * buy_gate_hours / len(indices),
-        "longestNoBuyHours": longest_no_buy, "dailyLossBlockedHours": blocked_hours,
+        "longestNoBuyHours": longest_no_buy, "dailyLossBlockedHours": daily_blocked_hours,
+        "equityLossBlockedHours": equity_blocked_hours, "riskBlockedHours": blocked_hours,
         "untradeableDustValueUsd": float(dust), "slippageBpsPerSide": float(slippage * 10000),
     }
     return {"summary": summary, "equityCurve": curve, "trades": account.trades}
@@ -334,7 +359,8 @@ def report(result):
     lines = ["# BTC/ETH spot strategy comparison", "", f"Generated: {result['generatedAt']}", "",
              "Research only. No model calls, portfolio API access, state changes, or strategy activation.", "",
              "## Method", "", *[f"- {x}" for x in result["assumptions"]], "", "## Fixed candidate rules", ""]
-    lines.extend(f"- **{name}**: {rule}" for name, rule in RULES.items())
+    selected = result["parameters"].get("strategies", STRATEGIES)
+    lines.extend(f"- **{name}**: {RULES[name]}" for name in selected)
     for period in ("reference", "holdout"):
         lines += ["", f"## {period.title()} — 5 bps slippage per side", "",
                   "| Strategy | Return | PnL $ | Max drawdown | BUY / SELL fills | Fees $ | Avg exposure $ | Entry-signal hours |",
@@ -348,22 +374,24 @@ def report(result):
     lines += ["", "## Holdout execution-cost sensitivity", "",
               "| Strategy | Return: 0 bps | Return: 5 bps | Return: 10 bps |",
               "| --- | ---: | ---: | ---: |"]
-    for name in STRATEGIES:
+    for name in selected:
         values = {r["summary"]["slippageBpsPerSide"]: r["summary"]["returnPct"] for r in result["runs"]
                   if r["period"] == "holdout" and r["summary"]["strategy"] == name}
         lines.append(f"| {name} | {values[0]:.2f}% | {values[5]:.2f}% | {values[10]:.2f}% |")
     lines += ["", "## Interpretation limits", "",
               "The holdout is a single chronological evaluation, not proof of future performance. "
+              "Reference/holdout are window labels, not a guarantee that the data was previously unseen; "
+              "new candidates tested on previously reviewed history need fresh forward evaluation. "
               "Using these results to adjust parameters turns this period into development data; "
               "a subsequent untouched period or forward paper run is then required.", "",
               "The current AI strategy cannot be replayed exactly. trend_proxy uses closed-candle prices "
               "instead of the live quote and omits subjective confidence/fee judgments. "
-              "All active candidates use the same one-entry-per-symbol policy, whereas the deployed runner can add to a position. "
+              "All active candidates use the same one-entry-per-symbol policy. "
               "Its output is a technical-rule proxy, not the deployed bot's historical PnL.", "",
               "Hourly close drawdown omits intrahour extremes. Next-hour opens approximate execution, "
               "not the actual minute-02 quote. The 0/5/10 bps scenarios model adverse spread/slippage, not measured fills. "
               "No hard intrabar stop is simulated. The mean-reversion 24-hour exit is a signal, and fills may be delayed "
-              "by another exit, the order cap, or the backend's daily-loss block on both BUY and SELL.", "",
+              "by another exit or the order cap. The legacy-v1 risk policy also blocks sells after the daily loss limit; reduce-only-v2 allows reducing sells.", "",
               "Returns are on the whole $50 account including idle cash; average exposure differs across strategies. "
               "Buy-and-hold deploys $5 per coin, matching the candidates' entry sizing, not a fully invested $50 benchmark. "
               "Terminal positions remain marked to market; estimatedNetExitEquity in results.json separately estimates "
@@ -385,6 +413,8 @@ def main():
     parser.add_argument("--cache-dir", type=Path, default=Path("data/quant/candles"))
     parser.add_argument("--output-dir", type=Path, default=Path("data/quant/comparison"))
     parser.add_argument("--offline", action="store_true", help="Use complete existing caches without network access")
+    parser.add_argument("--risk-policy", choices=RISK_POLICIES, default="legacy-v1")
+    parser.add_argument("--strategies", nargs="+", choices=STRATEGIES + EXPERIMENTAL_STRATEGIES, default=STRATEGIES)
     args = parser.parse_args()
     start, split, end = map(parse_date, (args.start, args.split, args.end))
     if not start < split < end:
@@ -399,21 +429,26 @@ def main():
     features = {s: indicators(candles[s]) for s in SYMBOLS}
     result = {"generatedAt": iso(int(time.time() * 1000)), "data": metadata,
               "codeSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-              "parameters": {"start": args.start, "split": args.split, "endExclusive": args.end, "rules": RULES},
+              "parameters": {"start": args.start, "split": args.split, "endExclusive": args.end,
+                             "riskPolicy": args.risk_policy, "strategies": list(args.strategies),
+                             "rules": {s: RULES[s] for s in args.strategies}},
               "assumptions": [
                   f"Reference: {args.start} to {args.split}; holdout: {args.split} to {args.end} (end exclusive, UTC).",
-                  "Fixed parameters chosen before viewing results; no grid search or model training.",
+                  "Candidate rules are declared before this run; no grid search or model training. Previously reviewed windows are development evidence, not new untouched holdouts.",
                   "$50 initial cash per strategy and per period; BTC/ETH spot, no shorting or leverage.",
                   "One $5 entry per symbol, no pyramiding; $20 marked buy exposure cap; one action per hour, exits first.",
                   "Signals use closed 1h candles; fills use next candle open with adverse slippage, never signal-bar close.",
                   "Fee 0.1% each side; slippage/spread scenarios 0, 5, 10 bps each side (base case 5).",
-                  "The UTC $3 daily realized-loss limit blocks both BUY and SELL, matching the current backend.",
+                  ("V2: $3 daily loss blocks entries, reducing sells remain allowed; equity at/below $47 triggers capped liquidation, and BUY fees count against that floor. BTC wins ties."
+                   if args.risk_policy == "reduce-only-v2" else
+                   "Legacy V1: the UTC $3 daily realized-loss limit blocks both BUY and SELL; alternating entry priority."),
+                  "The $47 V2 threshold triggers action only on sampled hourly opens; gaps and capped exits can overshoot it.",
                   "SELL notional capped at $5 and floored to six decimals; partial exits remain queued until complete.",
               ], "runs": []}
     for period, beginning, ending in (("reference", start, split), ("holdout", split, end)):
         for bps in (0, 5, 10):
-            for strategy in STRATEGIES:
-                run = simulate(strategy, candles, features, beginning, ending, D(bps) / 10000)
+            for strategy in args.strategies:
+                run = simulate(strategy, candles, features, beginning, ending, D(bps) / 10000, args.risk_policy)
                 run["period"] = period
                 result["runs"].append(run)
                 print(f"{period} {strategy} {bps}bps: return={run['summary']['returnPct']:.3f}%", flush=True)
