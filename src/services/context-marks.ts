@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import type { ContextSnapshot, OrderSignal, PriceBook, TradingSnapshot } from '../domain/trading/types.js';
-import { SYMBOLS } from '../domain/trading/types.js';
+import { isTradingSymbol, SYMBOLS } from '../domain/trading/types.js';
 import { decimal } from '../shared/decimal.js';
 import { AppError } from '../shared/errors.js';
 
 const quote = z.object({ price: z.number().positive(), asOf: z.string() });
-const shape = z.object({ marketData: z.object({ quotes: z.object({ BTCUSDT: quote, ETHUSDT: quote }) }) });
+const shape = z.object({ marketData: z.object({ quotes: z.partialRecord(z.enum(SYMBOLS), quote) }) });
 
 // V2 must not value the other coin using an hours-old last fill. Use the exact
 // persisted decision snapshot and reject stale/version-mismatched submissions.
@@ -23,9 +23,13 @@ export function contextMarks(context: ContextSnapshot | undefined, snapshot: Tra
     throw new AppError('FRESH_CONTEXT_REQUIRED', 'V2 context must include fresh quotes for both coins.', 422);
   }
   const prices: PriceBook = {};
-  for (const symbol of SYMBOLS) {
+  // Keep the original BTC/ETH context contract, and require current marks for
+  // every held asset plus the asset being traded. Unheld altcoins are optional.
+  const required = new Set(['BTCUSDT', 'ETHUSDT', ...snapshot.positions.map((p) => p.symbol)]);
+  if (isTradingSymbol(signal.symbol)) required.add(signal.symbol);
+  for (const symbol of SYMBOLS.filter((s) => required.has(s))) {
     const value = parsed.data.marketData.quotes[symbol];
-    if (!fresh(value.asOf)) throw new AppError('FRESH_CONTEXT_REQUIRED', `Stale context quote: ${symbol}.`, 422);
+    if (!value || !fresh(value.asOf)) throw new AppError('FRESH_CONTEXT_REQUIRED', `Missing or stale context quote: ${symbol}.`, 422);
     prices[symbol] = { price: decimal(value.price), asOf: value.asOf, source: 'decision-context' };
   }
   const mark = prices[signal.symbol as keyof PriceBook];

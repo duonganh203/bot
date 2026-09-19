@@ -38,7 +38,7 @@ describe('SQLite durability and atomicity', () => {
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(db.prepare('SELECT cash, typeof(cash) AS storage FROM portfolio').get()).toEqual({ cash: '44.995', storage: 'text' });
       expect(db.prepare('SELECT quantity FROM positions').get()).toEqual({ quantity: '0.00005' });
-      expect(db.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 2 });
+      expect(db.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 3 });
       expect(db.pragma('foreign_key_check')).toEqual([]);
     } finally { db.close(); }
   });

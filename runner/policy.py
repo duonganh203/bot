@@ -2,6 +2,7 @@
 from decimal import Decimal as D, ROUND_DOWN
 
 SYMBOLS = ('BTCUSDT', 'ETHUSDT')
+UNIVERSES = {'two': SYMBOLS, 'five': SYMBOLS + ('SOLUSDT', 'BNBUSDT', 'XRPUSDT')}
 MICRO = D('0.000001')
 POLICY = {
     'initialCapitalUsd': '50', 'orderUsd': '5', 'maxExposureUsd': '20',
@@ -21,11 +22,15 @@ def hold(reason):
             'confidence': 1.0, 'riskLevel': 'LOW', 'rationale': reason}
 
 
-def plan(context, market, closing=()):
+def plan(context, market, closing=(), symbols=SYMBOLS):
     """No I/O or AI. A sticky liquidation survives bounces and process restarts."""
     qty = {p['symbol']: D(str(p['quantity'])) for p in context['positions']}
+    if not symbols or len(set(symbols)) != len(symbols) or not set(symbols) <= set(UNIVERSES['five']):
+        raise ValueError('Unsupported policy universe')
+    if not set(qty) <= set(symbols):
+        raise ValueError('Portfolio contains an asset outside its policy universe')
     quotes = market['symbols']
-    values = {s: qty.get(s, D(0)) * D(quotes[s]['price']) for s in SYMBOLS}
+    values = {s: qty.get(s, D(0)) * D(quotes[s]['price']) for s in symbols}
     exposure = sum(values.values())
     cash = D(str(context['portfolio']['cash']))
     floor = D(str(context['portfolio']['initialCapital'])) - D(POLICY['maxEquityLossUsd'])
@@ -33,7 +38,7 @@ def plan(context, market, closing=()):
     daily_breach = context['risk']['dailyLossLimitReached']
     closing = {s for s in closing if values[s] >= MICRO}
     gates = {}
-    for symbol in SYMBOLS:
+    for symbol in symbols:
         q = quotes[symbol]
         gates[symbol] = {
             'entry': D(q['price']) > D(q['sma20']) > D(q['sma50']) and D(q['return24hPct']) > 0,
@@ -42,7 +47,7 @@ def plan(context, market, closing=()):
         }
         if values[symbol] >= MICRO and (gates[symbol]['exit'] or equity_breach or daily_breach):
             closing.add(symbol)
-    for symbol in SYMBOLS:
+    for symbol in symbols:
         if symbol in closing:
             candidate = hold('Reduce position: loss gate or trend exit; complete liquidation in steps.')
             candidate.update(action='SELL', symbol=symbol,
@@ -59,7 +64,7 @@ def plan(context, market, closing=()):
     elif exposure + 5 > 20:
         reason = 'MAX_EXPOSURE'
     else:
-        for symbol in SYMBOLS:
+        for symbol in symbols:
             if gates[symbol]['entry'] and values[symbol] < MICRO:
                 candidate = hold('Trend entry: one $5 position; no adding.')
                 candidate.update(action='BUY', symbol=symbol, amountUsd='5')

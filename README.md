@@ -1,6 +1,8 @@
 # AI Paper Trader MVP
 
-A backend for an external AI agent managing a simulated **$50 portfolio**. The agent reads context and submits BUY, SELL, or HOLD signals. The backend owns validation, risk enforcement, accounting, and the audit trail. Only BTCUSDT and ETHUSDT spot paper trades are supported. There is no live exchange execution.
+A backend for an external AI agent managing a simulated **$50 portfolio**. The agent reads context and submits BUY, SELL, or HOLD signals. The backend owns validation, risk enforcement, accounting, and the audit trail. BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT and XRPUSDT spot paper trades are supported. There is no live exchange execution.
+
+The [isolated two-versus-five-coin experiment](docs/UNIVERSE_COMPARISON.md) compares fresh paper accounts with identical risk limits. The existing two-coin V2 deployment remains separate.
 
 For reproducible historical strategy research, see the separate [quant backtest](quant/README.md) and [initial comparison results](docs/QUANT_BACKTEST.md). This research tool does not change the deployed strategy or submit signals.
 

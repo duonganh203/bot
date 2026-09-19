@@ -1,0 +1,14 @@
+[Unit]
+Description=Hourly isolated universe comparison consumer (%i)
+
+[Timer]
+OnCalendar=*-*-* *:02:15 UTC
+OnCalendar=*-*-* *:02:45 UTC
+OnCalendar=*-*-* *:03:15 UTC
+OnCalendar=*-*-* *:03:45 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-universe-agent@%i.service
+
+[Install]
+WantedBy=timers.target

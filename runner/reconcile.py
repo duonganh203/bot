@@ -17,8 +17,8 @@ def reconcile(path):
         p = db.execute('select * from portfolio').fetchone()
         trades = db.execute('select * from trades order by sequence').fetchall()
         cash, fees, pnl = D(p['initial_capital']), D(0), D(0)
-        qty = {s: D(0) for s in core.SYMBOLS}
-        open_round = {s: False for s in core.SYMBOLS}
+        qty = {s: D(0) for s in core.SUPPORTED_SYMBOLS}
+        open_round = {s: False for s in core.SUPPORTED_SYMBOLS}
         rounds = 0
         for t in trades:
             buy = t['side'] == 'BUY'
@@ -34,7 +34,7 @@ def reconcile(path):
         core.require(cash == D(p['cash']) and fees == D(p['total_fees']), 'Cash/fee ledger mismatch')
         core.require(abs(pnl - D(p['realized_pnl'])) < D('1e-40'), 'Realized PnL mismatch')
         positions = {r['symbol']: D(r['quantity']) for r in db.execute('select * from positions')}
-        core.require(all(qty[s] == positions.get(s, D(0)) for s in core.SYMBOLS), 'Inventory ledger mismatch')
+        core.require(set(positions) <= set(qty) and all(qty[s] == positions.get(s, D(0)) for s in qty), 'Inventory ledger mismatch')
         executed = db.execute("select count(*) from agent_decisions where status='EXECUTED'").fetchone()[0]
         core.require(executed == len(trades) == p['version'], 'Trade/decision/version mismatch')
         return {'status': 'passed', 'database': str(path), 'trades': len(trades), 'completedRoundTrips': rounds,

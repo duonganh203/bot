@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly shared input for two versus five coin comparison
+
+[Timer]
+OnCalendar=*-*-* *:02:00 UTC
+OnCalendar=*-*-* *:02:30 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-universe-market.service
+
+[Install]
+WantedBy=timers.target

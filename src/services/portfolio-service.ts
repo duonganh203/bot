@@ -1,4 +1,5 @@
 import type { PriceBook } from '../domain/trading/types.js';
+import { SYMBOLS } from '../domain/trading/types.js';
 import { loadMarks, markedPositions, valuePortfolio } from '../domain/trading/valuation.js';
 import { ManualMarketDataProvider } from '../market/market-data-provider.js';
 import type { MarketDataProvider } from '../market/market-data-provider.js';
@@ -43,7 +44,7 @@ export class PortfolioService {
         realizedPnlToday: daily.realizedPnlToday,
         remainingDailyLossBudgetUsd: daily.remainingDailyLossBudgetUsd,
         dailyLossLimitReached: daily.blocked,
-        allowedSymbols: ['BTCUSDT', 'ETHUSDT'],
+        allowedSymbols: [...SYMBOLS],
       },
       marketData: { mode: this.marketData ? 'provider' : 'manual', quotes },
       recentTrades: snapshot.recentTrades,

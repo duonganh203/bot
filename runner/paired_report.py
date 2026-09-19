@@ -18,11 +18,15 @@ def summarize(root, now=None):
     last_due = int(now) // 3600 - (1 if now % 3600 < 360 else 0)
     expected = set(range(experiment['startSlot'], last_due + 1))
     available = {int(p.stem) for p in (root / 'market').glob('*.json') if p.stem.isdigit()}
-    market = core.collect_market()
+    modes = tuple(experiment['backends'])
+    core.require(len(modes) == 2, 'Paired report requires two branches')
+    market = core.collect_market(experiment.get('symbols', core.SYMBOLS))
     accounts, completed, entries = {}, {}, {}
-    for mode in ('ai', 'control'):
+    for mode in modes:
         context = core.fetch_context(experiment['backends'][mode], market)
         outcomes, fills, votes = Counter(), Counter(), Counter()
+        reasons, buys = Counter(), Counter()
+        exposures, turnover = [], D(0)
         seen, pending, curve, latencies = {}, [], [], []
         entries[mode] = {}
         state_path = root / mode / 'state.json'
@@ -45,6 +49,8 @@ def summarize(root, now=None):
             seen[slot] = evidence['marketId']
             entries[mode][slot] = evidence
             outcomes[response['status']] += 1
+            reasons[evidence.get('ruleReason', 'UNKNOWN')] += 1
+            exposures.append(sum(D(g['holdingUsd']) for g in evidence['gates'].values()))
             equity = D(str(evidence['context']['portfolio']['equity']))
             curve.append((slot, equity))
             vote = evidence.get('aiVote')
@@ -52,6 +58,9 @@ def summarize(root, now=None):
                 votes['error' if vote['status'] != 'ok' else 'approved' if vote['approve'] else 'vetoed'] += 1
             if response['status'] == 'executed':
                 fills[evidence['candidate']['action']] += 1
+                turnover += D(str(response['trade']['grossUsd']))
+                if evidence['candidate']['action'] == 'BUY':
+                    buys[evidence['candidate']['symbol']] += 1
                 curve.append((slot + 0.1, equity - D(str(response['trade']['feeUsd']))))
                 filled = datetime.fromisoformat(response['trade']['createdAt'].replace('Z', '+00:00')).timestamp()
                 latencies.append(filled - evidence['market']['startedAt'])
@@ -68,15 +77,21 @@ def summarize(root, now=None):
                           'returnPct': str((D(str(context['portfolio']['equity'])) / 50 - 1) * 100),
                           'observedMaxDrawdownPct': str(dd),
                           'meanQuoteToFillSeconds': sum(latencies) / len(latencies) if latencies else None}
-    matched = set(completed['ai']) & set(completed['control'])
-    core.require(all(completed['ai'][s] == completed['control'][s] for s in matched), 'Consumers used different market events')
-    same_proposals = sum(all(entries['ai'][s]['ruleCandidate'][key] == entries['control'][s]['ruleCandidate'][key]
+        accounts[mode].update(buysBySymbol=dict(buys), ruleReasons=dict(reasons), grossTurnoverUsd=str(turnover),
+                             meanSampledExposureUsd=str(sum(exposures) / len(exposures)) if exposures else None,
+                             extraExecutionCostEstimateUsd={str(bps): str(turnover * D(bps) / 10000) for bps in (5, 10)})
+    left, right = modes
+    matched = set(completed[left]) & set(completed[right])
+    core.require(all(completed[left][s] == completed[right][s] for s in matched), 'Consumers used different market events')
+    same_proposals = sum(all(entries[left][s]['ruleCandidate'][key] == entries[right][s]['ruleCandidate'][key]
                              for key in ('action', 'symbol', 'amountUsd')) for s in matched)
     return {'generatedAt': datetime.fromtimestamp(now, timezone.utc).isoformat(), 'experiment': experiment,
             'accounts': accounts, 'matchedMarketSlots': len(matched), 'sameRuleProposalSlots': same_proposals,
             'missingMarketSlots': sorted(expected - available),
             'limitations': ['Both branches use the same cached quote; latency/slippage and infrastructure costs are excluded.',
                            'Hourly and report-time drawdown only, not intrahour extremes.',
+                           '5/10 bps extra costs are first-order estimates on filled turnover, not a replay with altered fills or decisions.',
+                           'More coins can increase invested exposure; return differences are not automatically better risk-adjusted performance.',
                            'After an AI veto, holdings and later eligible opportunities can differ.',
                            'AI errors, vetoes, missing slots and risk rejections are distinct; compare coverage with PnL.',
                            'V2 starts from two fresh $50 accounts; do not pool V1 history.']}

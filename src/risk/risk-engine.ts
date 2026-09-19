@@ -1,4 +1,4 @@
-import { isTradingSymbol } from '../domain/trading/types.js';
+import { isTradingSymbol, SYMBOLS } from '../domain/trading/types.js';
 import type { OrderSignal, RiskDecision, TradingSnapshot } from '../domain/trading/types.js';
 import { markedPositions } from '../domain/trading/valuation.js';
 import type { Marks } from '../domain/trading/valuation.js';
@@ -12,7 +12,7 @@ export class RiskEngine {
 
   evaluate(signal: OrderSignal, snapshot: TradingSnapshot, marks: Marks, now: Date): RiskDecision {
     if (!isTradingSymbol(signal.symbol)) {
-      return { approved: false, code: 'INVALID_SYMBOL', reason: 'Only BTCUSDT and ETHUSDT are allowed.' };
+      return { approved: false, code: 'INVALID_SYMBOL', reason: `Allowed symbols: ${SYMBOLS.join(', ')}.` };
     }
     if (signal.amountUsd.gt(LIMITS.maxOrderUsd)) {
       return { approved: false, code: 'ORDER_TOO_LARGE', reason: 'Order exceeds max order size of $5.' };

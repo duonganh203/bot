@@ -61,10 +61,11 @@ def state_source(directory, baseline):
     return state, source, body
 
 
-def validate_market(market):
+def validate_market(market, symbols=core.SYMBOLS):
     """Recompute indicators instead of trusting cached indicator strings."""
     result = deepcopy(market)
-    for symbol in core.SYMBOLS:
+    core.require(bool(symbols) and set(symbols) <= set(core.SUPPORTED_SYMBOLS), 'Unsupported market universe')
+    for symbol in symbols:
         quote = result['symbols'][symbol]
         rows = [list(row) + [int(row[0]) + core.HOUR_MS - 1]
                 for row in quote['closedHourlyCandles']]

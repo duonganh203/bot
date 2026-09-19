@@ -38,27 +38,39 @@ def checked_context(backend, market):
     return context
 
 
-def initialize(root, backends):
+def initialize(root, backends, universes=None):
+    modes = tuple(backends)
+    core.require(len(modes) == 2 and len(set(backends.values())) == 2, 'Separate backends required')
+    if universes is not None:
+        core.require(universes == policy.UNIVERSES, 'Unexpected comparison universes')
+        core.require(set(modes) == set(universes), 'Universe branches differ')
+    symbols = tuple(dict.fromkeys(s for group in universes.values() for s in group)) if universes else core.SYMBOLS
     path = root / 'experiment.json'
     if path.exists():
         existing = core.read_json(path)
-        core.require(existing['backends'] == backends and existing['version'] == version(), 'Existing experiment differs')
+        core.require(existing['backends'] == backends and existing['version'] == version()
+                     and existing.get('symbols', list(core.SYMBOLS)) == list(symbols), 'Existing experiment differs')
         return existing
-    core.require(backends['ai'] != backends['control'], 'Separate backends required')
-    core.require(not any((root / mode / 'state.json').exists() for mode in MODES), 'State exists without manifest')
-    market = core.collect_market()
+    core.require(not any((root / mode / 'state.json').exists() for mode in modes), 'State exists without manifest')
+    market = core.collect_market(symbols)
     contexts = {mode: checked_context(url, market) for mode, url in backends.items()}
-    for mode in MODES:
+    for mode in modes:
         p = contexts[mode]['portfolio']
         core.require(p['version'] == 0 and policy.D(str(p['cash'])) == 50 and not contexts[mode]['positions'],
                      'V2 initialization requires two fresh $50 paper accounts; keep V1 separately')
-        other = 'ai' if mode == 'control' else 'control'
+        other = next(m for m in modes if m != mode)
         status, _, _ = core.http('GET', backends[mode] + '/api/contexts/' + contexts[other]['contextId'])
         core.require(status == 404, 'Portfolio isolation failed')
     experiment = {'schemaVersion': 2, 'version': version(), 'createdAt': time.time(),
                   'startSlot': int(time.time()) // 3600 + 1, 'backends': backends,
                   'policy': policy.POLICY, 'openingContexts': contexts, 'reviewAfterDays': 14,
                   'evaluation': 'Forward only; net equity, sampled drawdown, fees, round trips, coverage and AI vetoes. Do not pool V1 results or promote automatically.'}
+    experiment['symbols'] = list(symbols)
+    if universes:
+        experiment.update(kind='universe-comparison', universes=universes,
+                          policy={**policy.POLICY, 'priority': 'exits first; then branch universe order', 'ai': 'disabled in both universe comparison branches'},
+                          priority=list(symbols), aiFilter=False,
+                          evaluation='Two versus five coins, same fixed policy, independent fresh $50 accounts and shared quotes. Compare turnover, net return, sampled drawdown and exposure; no automatic promotion.')
     core.save_json(path, experiment)
     return experiment
 
@@ -99,10 +111,14 @@ def execute(root, mode, dry_run=False, codex='codex'):
     if not event:
         return {'status': 'waiting', 'reason': 'No market event this hour', 'slot': slot}
     market = event['market']
+    core.require(set(market['symbols']) == set(experiment.get('symbols', core.SYMBOLS)), 'Market universe differs')
     core.require(0 <= time.time() - market['startedAt'] < core.MAX_AGE - 45, 'Market event expired')
     context = checked_context(backend, market)
     core.assert_fresh(market, context, time.time())
-    candidate, closing, gates, reason = policy.plan(context, market, previous.get('closing', []) if previous else [])
+    symbols = experiment.get('universes', {}).get(mode, policy.SYMBOLS)
+    if experiment.get('kind') == 'universe-comparison':
+        core.require(tuple(symbols) == policy.UNIVERSES[mode], 'Comparison universe changed')
+    candidate, closing, gates, reason = policy.plan(context, market, previous.get('closing', []) if previous else [], symbols)
     rule_candidate = dict(candidate)
     run_dir = directory / 'runs' / (str(slot) + '-' + uuid.uuid4().hex)
     run_dir.mkdir(parents=True)
@@ -145,21 +161,27 @@ def execute(root, mode, dry_run=False, codex='codex'):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path.home() / 'paper-v2')
-    parser.add_argument('--mode', choices=MODES)
+    parser.add_argument('--mode', choices=MODES + tuple(policy.UNIVERSES))
     parser.add_argument('--initialize', action='store_true')
+    parser.add_argument('--initialize-universes', action='store_true')
+    parser.add_argument('--two-backend', default='http://127.0.0.1:3002')
+    parser.add_argument('--five-backend', default='http://127.0.0.1:3003')
     parser.add_argument('--ai-backend', default='http://127.0.0.1:3000')
     parser.add_argument('--control-backend', default='http://127.0.0.1:3001')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--codex', default='codex')
     args = parser.parse_args()
-    core.require(args.initialize != bool(args.mode), 'Choose initialize or a mode')
-    core.require(not (args.initialize and args.dry_run), 'Initialization cannot be a dry run')
+    initializing = args.initialize or args.initialize_universes
+    core.require(sum((args.initialize, args.initialize_universes, bool(args.mode))) == 1, 'Choose initialization or a mode')
+    core.require(not (initializing and args.dry_run), 'Initialization cannot be a dry run')
     core.os.umask(0o077)
     root = args.root.resolve()
-    directory = root if args.initialize else root / args.mode
+    directory = root if initializing else root / args.mode
     directory.mkdir(parents=True, exist_ok=True)
     with core.exclusive_lock(directory):
-        result = (initialize(root, {'ai': origin(args.ai_backend), 'control': origin(args.control_backend)})
+        result = (initialize(root, {'two': origin(args.two_backend), 'five': origin(args.five_backend)}, policy.UNIVERSES)
+                  if args.initialize_universes else
+                  initialize(root, {'ai': origin(args.ai_backend), 'control': origin(args.control_backend)})
                   if args.initialize else execute(root, args.mode, args.dry_run, args.codex))
         print(core.dumps(result), flush=True)
 

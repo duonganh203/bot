@@ -15,6 +15,13 @@
       "when": 1788961543564,
       "tag": "0001_lazy_sue_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789813533703,
+      "tag": "0002_chunky_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

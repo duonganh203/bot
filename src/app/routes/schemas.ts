@@ -41,6 +41,9 @@ export const idParamsSchema = z.strictObject({ id: z.uuid() });
 export const contextQuerySchema = z.strictObject({
   BTCUSDT: decimalInput.optional(),
   ETHUSDT: decimalInput.optional(),
+  SOLUSDT: decimalInput.optional(),
+  BNBUSDT: decimalInput.optional(),
+  XRPUSDT: decimalInput.optional(),
 });
 const limit = z.coerce.number().int().min(1).max(200).default(50);
 export const tradesQuerySchema = z.strictObject({ limit, symbol: z.enum(SYMBOLS).optional() });

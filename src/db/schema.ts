@@ -36,7 +36,7 @@ export const positions = sqliteTable('positions', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 }, (table) => [
-  check('position_symbol', sql`${table.symbol} IN ('BTCUSDT', 'ETHUSDT')`),
+  check('position_symbol', sql`${table.symbol} IN ('BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT')`),
   check('positive_quantity', sql`CAST(${table.quantity} AS REAL) > 0`),
   check('nonnegative_cost', sql`CAST(${table.costBasisUsd} AS REAL) >= 0`),
   check('nonnegative_entry_fees', sql`CAST(${table.entryFeesUsd} AS REAL) >= 0`),
@@ -57,7 +57,7 @@ export const trades = sqliteTable('trades', {
 }, (table) => [
   index('trades_created_at_idx').on(table.createdAt),
   index('trades_symbol_sequence_idx').on(table.symbol, table.sequence),
-  check('trade_symbol', sql`${table.symbol} IN ('BTCUSDT', 'ETHUSDT')`),
+  check('trade_symbol', sql`${table.symbol} IN ('BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT')`),
   check('trade_side', sql`${table.side} IN ('BUY', 'SELL')`),
   check('trade_positive_quantity', sql`CAST(${table.quantity} AS REAL) > 0`),
   check('trade_positive_price', sql`CAST(${table.price} AS REAL) > 0`),
@@ -117,6 +117,6 @@ export const marketPrices = sqliteTable('market_prices', {
   asOf: text('as_of').notNull(),
   source: text('source').notNull(),
 }, (table) => [
-  check('market_symbol', sql`${table.symbol} IN ('BTCUSDT', 'ETHUSDT')`),
+  check('market_symbol', sql`${table.symbol} IN ('BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT')`),
   check('market_positive_price', sql`CAST(${table.price} AS REAL) > 0`),
 ]);

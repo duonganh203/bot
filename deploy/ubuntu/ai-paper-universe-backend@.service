@@ -1,0 +1,22 @@
+[Unit]
+Description=Isolated universe comparison backend (%i)
+After=network.target
+
+[Service]
+User=paper-trader
+Group=paper-trader
+WorkingDirectory=/opt/ai-paper-universe
+EnvironmentFile=/etc/ai-paper-universe-%i.env
+ExecStart=/usr/bin/node /opt/ai-paper-universe/dist/app/server.js
+Restart=on-failure
+RestartSec=3
+StateDirectory=ai-paper-universe-%i
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

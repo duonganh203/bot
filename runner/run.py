@@ -24,6 +24,7 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 SYMBOLS = ("BTCUSDT", "ETHUSDT")
+SUPPORTED_SYMBOLS = SYMBOLS + ("SOLUSDT", "BNBUSDT", "XRPUSDT")
 MARKET_URL = "https://data-api.binance.vision"
 HOUR_MS = 3_600_000
 SLOT_SECONDS = HOUR_MS // 1000
@@ -135,12 +136,14 @@ def closed_candles(rows, server_ms):
     return closed[-100:]
 
 
-def collect_market():
+def collect_market(symbols=SYMBOLS):
+    require(bool(symbols) and len(set(symbols)) == len(symbols)
+            and set(symbols) <= set(SUPPORTED_SYMBOLS), 'Unsupported market universe')
     started = time.time()
     server_ms = int(get_json(MARKET_URL + "/api/v3/time")["serverTime"])
     require(abs(server_ms / 1000 - time.time()) <= 30, "VPS and market clocks differ by over 30s")
     market = {}
-    for symbol in SYMBOLS:
+    for symbol in symbols:
         rows = get_json(MARKET_URL + "/api/v3/klines?" + urlencode({
             "symbol": symbol, "interval": "1h", "limit": 101,
             "endTime": server_ms,
@@ -162,7 +165,7 @@ def collect_market():
 
 
 def fetch_context(backend, market):
-    query = urlencode({symbol: market["symbols"][symbol]["price"] for symbol in SYMBOLS})
+    query = urlencode({symbol: quote["price"] for symbol, quote in market["symbols"].items()})
     context = get_json(backend + "/api/context?" + query)
     uuid.UUID(context["contextId"])
     require(isinstance(context["portfolio"]["version"], int), "Invalid portfolio version")

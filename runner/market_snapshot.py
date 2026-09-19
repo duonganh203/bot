@@ -23,17 +23,18 @@ def read_event(directory, slot):
     core.require(event['marketId'] == digest(market), 'Market event checksum mismatch')
     core.require(market['serverTimeMs'] // core.HOUR_MS == slot, 'Market candle hour mismatch')
     core.require(int(market['startedAt']) // 3600 == slot, 'Market collection crossed hour')
-    validate_market(market)
+    validate_market(market, tuple(market['symbols']))
     return event
 
 
-def publish(directory):
+def publish(directory, symbols=core.SYMBOLS):
     slot = int(time.time()) // 3600
     existing = read_event(directory, slot)
     if existing:
+        core.require(set(existing['market']['symbols']) == set(symbols), 'Market universe differs')
         return {'status': 'skipped', 'marketId': existing['marketId'], 'slot': slot}
-    market = core.collect_market()
-    validate_market(market)
+    market = core.collect_market(symbols)
+    validate_market(market, symbols)
     core.require(int(time.time()) // 3600 == slot == market['serverTimeMs'] // core.HOUR_MS,
                  'Collection crossed hour; do not publish')
     core.require(time.time() - market['startedAt'] < 60, 'Market collection took too long')
@@ -45,11 +46,12 @@ def publish(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', type=Path, default=Path.home() / 'paper-v2' / 'market')
+    parser.add_argument('--symbols', nargs='+', choices=core.SUPPORTED_SYMBOLS, default=core.SYMBOLS)
     args = parser.parse_args()
     core.os.umask(0o077)
     args.directory.mkdir(parents=True, exist_ok=True)
     with core.exclusive_lock(args.directory):
-        print(core.dumps(publish(args.directory)), flush=True)
+        print(core.dumps(publish(args.directory, args.symbols)), flush=True)
 
 
 if __name__ == '__main__':

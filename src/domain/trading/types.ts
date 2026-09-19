@@ -1,7 +1,7 @@
 import type { Amount } from '../../shared/decimal.js';
 import type { JsonValue } from '../../shared/json.js';
 
-export const SYMBOLS = ['BTCUSDT', 'ETHUSDT'] as const;
+export const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'] as const;
 export type TradingSymbol = (typeof SYMBOLS)[number];
 export const isTradingSymbol = (symbol: string): symbol is TradingSymbol =>
   SYMBOLS.some((allowed) => allowed === symbol);

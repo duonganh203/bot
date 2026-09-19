@@ -1,0 +1,19 @@
+[Unit]
+Description=Universe comparison consumer (%i)
+Requires=ai-paper-universe-backend@%i.service
+After=network-online.target ai-paper-universe-backend@%i.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+WorkingDirectory=/home/trade-agent/paper-universe/%i
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-universe/runner/paired.py --root /home/trade-agent/paper-universe --mode %i
+UMask=0077
+TimeoutStartSec=90s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-universe/%i
+PrivateTmp=true
+Nice=10
