@@ -1,0 +1,19 @@
+[Unit]
+Description=V3 prospective paper consumer (%i)
+Requires=ai-paper-research-backend@%i.service
+After=network-online.target ai-paper-research-backend@%i.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+WorkingDirectory=/home/trade-agent/paper-research-v3/%i
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-research-v3/runner/research_runner.py --root /home/trade-agent/paper-research-v3 --mode %i
+UMask=0077
+TimeoutStartSec=90s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-research-v3/%i
+PrivateTmp=true
+Nice=10

@@ -1,0 +1,18 @@
+[Unit]
+Description=V3 immutable closed-candle and spread research snapshot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-research-v3/runner/research_market.py --directory /home/trade-agent/paper-research-v3/market
+UMask=0077
+TimeoutStartSec=90s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-research-v3/market
+PrivateTmp=true
+Nice=10

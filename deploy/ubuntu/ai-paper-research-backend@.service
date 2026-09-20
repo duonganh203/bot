@@ -1,0 +1,22 @@
+[Unit]
+Description=V3 prospective paper backend (%i)
+After=network.target
+
+[Service]
+User=paper-trader
+Group=paper-trader
+WorkingDirectory=/opt/ai-paper-research-v3
+EnvironmentFile=/etc/ai-paper-research-%i.env
+ExecStart=/usr/bin/node /opt/ai-paper-research-v3/dist/app/server.js
+Restart=on-failure
+RestartSec=3
+StateDirectory=ai-paper-research-%i
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

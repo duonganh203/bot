@@ -2,6 +2,15 @@
 
 A backend for an external AI agent managing a simulated **$50 portfolio**. The agent reads context and submits BUY, SELL, or HOLD signals. The backend owns validation, risk enforcement, accounting, and the audit trail. BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT and XRPUSDT spot paper trades are supported. There is no live exchange execution.
 
+The [V3 prospective research experiment](docs/RESEARCH_V3.md) adds a separately
+versioned, slower trend candidate with relative-strength ranking, volatility-aware
+entry sizes, a re-entry cooldown, and cost/benchmark reporting. It runs against a
+fresh five-coin baseline with identical paper execution and backend risk limits.
+The candidate is an unvalidated research hypothesis; it does not automatically
+replace or reset the older experiments and does not call an LLM for trade votes.
+See the [industry and AI research](docs/INDUSTRY_QUANT_AI_RESEARCH_20260920.md)
+for the evidence behind this research direction.
+
 The [isolated two-versus-five-coin experiment](docs/UNIVERSE_COMPARISON.md) compares fresh paper accounts with identical risk limits. The existing two-coin V2 deployment remains separate.
 
 For reproducible historical strategy research, see the separate [quant backtest](quant/README.md) and [initial comparison results](docs/QUANT_BACKTEST.md). This research tool does not change the deployed strategy or submit signals.

@@ -8,3 +8,4 @@ coverage/
 *.sqlite-wal
 *.log
 __pycache__/
+output/

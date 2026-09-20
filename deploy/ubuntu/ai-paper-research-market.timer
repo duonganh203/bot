@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly V3 shared market snapshot
+
+[Timer]
+OnCalendar=*-*-* *:04:00 UTC
+OnCalendar=*-*-* *:04:30 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-research-market.service
+
+[Install]
+WantedBy=timers.target

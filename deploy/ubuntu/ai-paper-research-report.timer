@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly V3 paper report after decision deadline
+
+[Timer]
+OnCalendar=*-*-* *:06:30 UTC
+AccuracySec=5s
+Persistent=false
+Unit=ai-paper-research-report.service
+
+[Install]
+WantedBy=timers.target

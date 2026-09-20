@@ -1,0 +1,18 @@
+[Unit]
+Description=V3 paper comparison and cost report
+After=network-online.target ai-paper-research-backend@baseline.service ai-paper-research-backend@candidate.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-research-v3/runner/research_report.py --root /home/trade-agent/paper-research-v3 --output /home/trade-agent/paper-research-v3/reports/latest.json
+UMask=0077
+TimeoutStartSec=120s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-research-v3/reports
+PrivateTmp=true
+Nice=15
+StandardOutput=null
