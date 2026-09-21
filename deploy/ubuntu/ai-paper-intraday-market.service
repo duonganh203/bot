@@ -1,0 +1,18 @@
+[Unit]
+Description=V4 immutable minute books and closed candle features
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-intraday-v4/runner/intraday_market.py --root /home/trade-agent/paper-intraday-v4/market
+UMask=0077
+TimeoutStartSec=55s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-intraday-v4/market
+PrivateTmp=true
+Nice=10

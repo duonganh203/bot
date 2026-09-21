@@ -31,13 +31,15 @@ export function registerRoutes(app: FastifyInstance, services: {
       const price = query[symbol];
       if (price) overrides[symbol] = { price, asOf: services.clock().toISOString(), source: 'query' };
     }
-    return present(await services.portfolio.context(overrides));
+    const decimals = request.headers['x-decimal-format'] === 'string' ? 'string' : 'number';
+    return present(await services.portfolio.context(overrides, decimals), decimals);
   });
 
   app.post('/api/signals', async (request, reply) => {
     const signal = signalSchema.parse(request.body);
     const headers = signalHeadersSchema.parse(request.headers);
-    const submission = await services.trading.submit(signal, headers['idempotency-key']);
+    const decimals = request.headers['x-decimal-format'] === 'string' ? 'string' : 'number';
+    const submission = await services.trading.submit(signal, headers['idempotency-key'], decimals);
     return reply.code(submission.result.status === 'rejected' ? 422 : 200)
       .header('Idempotency-Replayed', String(submission.replayed)).send(present(submission.result));
   });

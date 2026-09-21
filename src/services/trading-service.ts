@@ -27,7 +27,7 @@ export class TradingService {
     private readonly marketData?: MarketDataProvider,
   ) {}
 
-  submit(signal: Signal, idempotencyKey?: string) {
+  submit(signal: Signal, idempotencyKey?: string, decimals: 'number' | 'string' = 'number') {
     return this.queue.run(async () => {
       const hash = signalHash(signal);
       if (idempotencyKey) {
@@ -35,7 +35,7 @@ export class TradingService {
         if (replay) return replay;
       }
       try {
-        return { result: await this.process(signal, hash, idempotencyKey), replayed: false };
+        return { result: await this.process(signal, hash, idempotencyKey, decimals), replayed: false };
       } catch (error) {
         // A concurrent writer can win while the pure paper executor is awaiting.
         // Read its receipt only after our failed transaction has rolled back.
@@ -57,7 +57,7 @@ export class TradingService {
     return { result: receipt.result, replayed: true };
   }
 
-  private async process(signal: Signal, hash: string, idempotencyKey?: string): Promise<SignalResult> {
+  private async process(signal: Signal, hash: string, idempotencyKey?: string, decimals: 'number' | 'string' = 'number'): Promise<SignalResult> {
     const now = this.clock();
     const timestamp = now.toISOString();
     const snapshot = this.repository.snapshot(now);
@@ -112,8 +112,8 @@ export class TradingService {
     if (applied.position.quantity.isPositive()) updatedPositions.push(applied.position);
     const updatedMarks = new Map(marks).set(fill.symbol, fill.price);
     const result: SignalResult = {
-      status: 'executed', decisionId: decision.id, trade: toJson(applied.trade),
-      portfolio: toJson(valuePortfolio(applied.portfolio, updatedPositions, updatedMarks)),
+      status: 'executed', decisionId: decision.id, trade: toJson(applied.trade, decimals),
+      portfolio: toJson(valuePortfolio(applied.portfolio, updatedPositions, updatedMarks), decimals),
     };
     const audit: DecisionAudit = { executionContext, receipt: receiptFor(result) };
     this.repository.commitTrade({

@@ -1,0 +1,13 @@
+[Unit]
+Description=V4 minute paper consumer retries (%i)
+
+[Timer]
+OnCalendar=*-*-* *:*:15 UTC
+OnCalendar=*-*-* *:*:30 UTC
+OnCalendar=*-*-* *:*:45 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-intraday-agent@%i.service
+
+[Install]
+WantedBy=timers.target

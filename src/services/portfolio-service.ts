@@ -19,7 +19,7 @@ export class PortfolioService {
     private readonly riskPolicy: RiskPolicy = 'legacy-v1',
   ) {}
 
-  async context(overrides: PriceBook = {}) {
+  async context(overrides: PriceBook = {}, decimals: 'number' | 'string' = 'number') {
     const now = this.clock();
     const snapshot = this.repository.snapshot(now);
     const quotes = { ...snapshot.prices, ...overrides };
@@ -52,7 +52,7 @@ export class PortfolioService {
     // Persist exactly the response the caller receives, including temporary query marks.
     this.repository.saveContext({
       id: context.contextId, createdAt: context.asOf,
-      portfolioVersion: snapshot.portfolio.version, payload: toJson(context),
+      portfolioVersion: snapshot.portfolio.version, payload: toJson(context, decimals),
     });
     return context;
   }

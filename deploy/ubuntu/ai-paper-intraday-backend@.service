@@ -1,0 +1,22 @@
+[Unit]
+Description=V4 isolated intraday paper backend (%i)
+After=network.target
+
+[Service]
+User=paper-trader
+Group=paper-trader
+WorkingDirectory=/opt/ai-paper-intraday-v4
+EnvironmentFile=/etc/ai-paper-intraday-%i.env
+ExecStart=/usr/bin/node /opt/ai-paper-intraday-v4/dist/app/server.js
+Restart=on-failure
+RestartSec=3
+StateDirectory=ai-paper-intraday-%i
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

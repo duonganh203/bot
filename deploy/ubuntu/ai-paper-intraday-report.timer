@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly V4 paper evidence report
+
+[Timer]
+OnCalendar=*-*-* *:02:50 UTC
+AccuracySec=5s
+Persistent=false
+Unit=ai-paper-intraday-report.service
+
+[Install]
+WantedBy=timers.target

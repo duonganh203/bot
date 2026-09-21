@@ -1,0 +1,19 @@
+[Unit]
+Description=V4 independent minute paper consumer (%i)
+Requires=ai-paper-intraday-backend@%i.service
+After=network-online.target ai-paper-intraday-backend@%i.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+WorkingDirectory=/home/trade-agent/paper-intraday-v4/%i
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-intraday-v4/runner/intraday_runner.py --root /home/trade-agent/paper-intraday-v4 --mode %i
+UMask=0077
+TimeoutStartSec=55s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-intraday-v4/%i
+PrivateTmp=true
+Nice=10

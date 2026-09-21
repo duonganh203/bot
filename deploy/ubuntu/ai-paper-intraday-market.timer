@@ -1,0 +1,11 @@
+[Unit]
+Description=V4 shared market snapshot every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00 UTC
+AccuracySec=1s
+Persistent=false
+Unit=ai-paper-intraday-market.service
+
+[Install]
+WantedBy=timers.target

@@ -4,7 +4,11 @@ import { isTradingSymbol, SYMBOLS } from '../domain/trading/types.js';
 import { decimal } from '../shared/decimal.js';
 import { AppError } from '../shared/errors.js';
 
-const quote = z.object({ price: z.number().positive(), asOf: z.string() });
+const quotePrice = z.union([
+  z.number().positive(),
+  z.string().max(32).regex(/^\d+(?:\.\d{1,6})?$/).refine((value) => decimal(value).gt(0)),
+]);
+const quote = z.object({ price: quotePrice, asOf: z.string() });
 const shape = z.object({ marketData: z.object({ quotes: z.partialRecord(z.enum(SYMBOLS), quote) }) });
 
 // V2 must not value the other coin using an hours-old last fill. Use the exact

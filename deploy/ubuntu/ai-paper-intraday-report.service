@@ -1,0 +1,18 @@
+[Unit]
+Description=V4 paper comparison and execution cost report
+After=network-online.target ai-paper-intraday-backend@slow.service ai-paper-intraday-backend@pullback.service
+
+[Service]
+Type=oneshot
+User=trade-agent
+Group=trade-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/ai-paper-intraday-v4/runner/intraday_report.py --root /home/trade-agent/paper-intraday-v4 --output /home/trade-agent/paper-intraday-v4/reports/latest.json
+UMask=0077
+TimeoutStartSec=120s
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/trade-agent/paper-intraday-v4/reports
+PrivateTmp=true
+Nice=15
+StandardOutput=null
